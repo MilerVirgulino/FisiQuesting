@@ -1,0 +1,115 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isSelf(userId) {
+      return signedIn() && request.auth.uid == userId;
+    }
+
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function isApproved() {
+      return signedIn() && userDoc().data.status == "approved";
+    }
+
+    function isAdmin() {
+      return signedIn() && userDoc().data.role == "admin" && userDoc().data.status == "approved";
+    }
+
+    function isMissionForUser() {
+      return isApproved()
+        && resource.data.status == "open"
+        && resource.data.targetGrade == userDoc().data.grade
+        && resource.data.targetClass == userDoc().data.className;
+    }
+
+    function isOwnProgressId(progressId) {
+      return signedIn() && progressId.matches(request.auth.uid + "_\\d{4}-\\d{2}-\\d{2}");
+    }
+
+    function onlyStudentStatsChanged() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+        "totalXp",
+        "streak",
+        "bestStreak",
+        "solvedCount",
+        "correctCount",
+        "updatedAt"
+      ]);
+    }
+
+    match /users/{userId} {
+      allow create: if isSelf(userId)
+        && request.resource.data.role == "student"
+        && request.resource.data.status == "pending";
+      allow read: if isSelf(userId) || isAdmin();
+      allow update: if isAdmin()
+        || (
+          isSelf(userId)
+          && isApproved()
+          && onlyStudentStatsChanged()
+          && request.resource.data.role == resource.data.role
+          && request.resource.data.status == resource.data.status
+          && request.resource.data.email == resource.data.email
+        );
+      allow delete: if isAdmin();
+    }
+
+    match /questions/{questionId} {
+      allow read: if isApproved();
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /dailyQuests/{questId} {
+      allow read: if isApproved();
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /weeklyMissions/{missionId} {
+      allow read: if isAdmin() || isMissionForUser();
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /missionAttempts/{attemptId} {
+      allow read: if isAdmin() || (signedIn() && resource.data.userId == request.auth.uid);
+      allow create: if isApproved()
+        && attemptId.matches(request.auth.uid + "_.*")
+        && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    match /appConfig/{configId} {
+      allow read: if isApproved();
+      allow write: if isAdmin();
+    }
+
+    match /userProgress/{progressId} {
+      allow read: if isAdmin() || (signedIn() && resource.data.userId == request.auth.uid);
+      allow create: if isApproved()
+        && isOwnProgressId(progressId)
+        && request.resource.data.userId == request.auth.uid;
+      allow update: if isApproved()
+        && isOwnProgressId(progressId)
+        && resource.data.userId == request.auth.uid
+        && request.resource.data.userId == request.auth.uid;
+      allow delete: if isAdmin();
+
+      match /answers/{answerId} {
+        allow read: if isAdmin() || isOwnProgressId(progressId);
+        allow create: if isApproved()
+          && isOwnProgressId(progressId)
+          && (
+            request.resource.data.questionId == answerId
+            || answerId.matches(request.resource.data.missionId + "_" + request.resource.data.questionId)
+          );
+        allow update, delete: if false;
+      }
+    }
+  }
+}
