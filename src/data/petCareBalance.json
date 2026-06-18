@@ -1,0 +1,68 @@
+{
+  "energy": {
+    "min": 0,
+    "max": 100,
+    "initial": 100,
+    "decayAmount": 1,
+    "decayEveryMinutes": 120,
+    "battleCost": 10,
+    "minimumToBattle": 20
+  },
+  "penalties": [
+    {
+      "id": "full",
+      "minEnergy": 70,
+      "label": "Bem alimentado",
+      "description": "Sem penalidade.",
+      "damageMultiplier": 1,
+      "speedMultiplier": 1
+    },
+    {
+      "id": "ok",
+      "minEnergy": 40,
+      "label": "Com fome",
+      "description": "Dano e velocidade levemente reduzidos.",
+      "damageMultiplier": 0.95,
+      "speedMultiplier": 0.95
+    },
+    {
+      "id": "hungry",
+      "minEnergy": 20,
+      "label": "Faminto",
+      "description": "Dano e velocidade reduzidos.",
+      "damageMultiplier": 0.9,
+      "speedMultiplier": 0.9
+    },
+    {
+      "id": "starving",
+      "minEnergy": 0,
+      "label": "Exausto",
+      "description": "Nao pode iniciar batalha ate se alimentar.",
+      "damageMultiplier": 0.8,
+      "speedMultiplier": 0.8
+    }
+  ],
+  "foods": [
+    {
+      "id": "banana",
+      "label": "Banana",
+      "description": "Um reforco barato para segurar a fome.",
+      "price": 10,
+      "energy": 15
+    },
+    {
+      "id": "lanche",
+      "label": "Lanche",
+      "description": "Recupera bem depois de alguns desafios.",
+      "price": 25,
+      "energy": 40
+    },
+    {
+      "id": "marmita",
+      "label": "Marmita",
+      "description": "Enche a energia do personagem.",
+      "price": 50,
+      "energy": 100
+    }
+  ]
+}

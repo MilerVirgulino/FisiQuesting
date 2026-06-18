@@ -2,7 +2,8 @@ import React from "react";
 import { HeartPulse, Shield, Sparkles, Swords, Zap } from "lucide-react";
 import AvatarEditor from "../components/AvatarEditor.jsx";
 import AvatarStatsPanel from "../components/AvatarStatsPanel.jsx";
-import { getAvatarLevel, normalizeBattleStats } from "../services/avatarStats";
+import PetCarePanel from "../components/PetCarePanel.jsx";
+import { getAvatarLevel, getEffectiveBattleStats, normalizeBattleStats } from "../services/avatarStats";
 import { useAuth } from "../services/authService.jsx";
 
 export default function AvatarPage() {
@@ -17,6 +18,7 @@ export default function AvatarPage() {
     losses: 0
   };
   const stats = normalizeBattleStats(avatar);
+  const effectiveStats = getEffectiveBattleStats(stats);
   const level = getAvatarLevel(profile?.totalXp);
 
   return (
@@ -35,6 +37,7 @@ export default function AvatarPage() {
       </div>
 
       <AvatarEditor userId={firebaseUser.uid} profile={profile} onSaved={refreshProfile} />
+      <PetCarePanel userId={firebaseUser.uid} profile={profile} onSaved={refreshProfile} />
       <AvatarStatsPanel userId={firebaseUser.uid} profile={profile} onSaved={refreshProfile} />
 
       <section className="avatar-stats">
@@ -47,21 +50,25 @@ export default function AvatarPage() {
           <Swords size={22} />
           <span>Ataque</span>
           <strong>{stats.attack}</strong>
+          <small>efetivo {effectiveStats.attack}</small>
         </article>
         <article>
           <Shield size={22} />
           <span>Defesa</span>
           <strong>{stats.defense}</strong>
+          <small>efetivo {effectiveStats.defense}</small>
         </article>
         <article>
           <Zap size={22} />
           <span>Velocidade</span>
           <strong>{stats.speed}</strong>
+          <small>efetivo {effectiveStats.speed}</small>
         </article>
         <article>
           <HeartPulse size={22} />
           <span>HP</span>
           <strong>{stats.hp}</strong>
+          <small>efetivo {effectiveStats.hp}</small>
         </article>
         <article>
           <Swords size={22} />

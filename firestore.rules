@@ -41,6 +41,7 @@ service cloud.firestore {
         "solvedCount",
         "correctCount",
         "coins",
+        "petCare",
         "ownedAvatarItems",
         "completedMissionIds",
         "avatar",

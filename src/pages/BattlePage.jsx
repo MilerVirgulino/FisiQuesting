@@ -14,6 +14,7 @@ import {
   touchBattlePresence
 } from "../services/battleService";
 import { useAuth } from "../services/authService.jsx";
+import { consumeBattleEnergy, getPetCareState } from "../services/petCareService";
 
 function getPlayers(battle) {
   return Object.values(battle?.players || {});
@@ -25,7 +26,7 @@ function hpPercent(player) {
 }
 
 export default function BattlePage() {
-  const { profile } = useAuth();
+  const { profile, refreshProfile } = useAuth();
   const [codeInput, setCodeInput] = useState("");
   const [battleCode, setBattleCode] = useState("");
   const [battle, setBattle] = useState(null);
@@ -70,6 +71,12 @@ export default function BattlePage() {
   }, [battleCode, profile?.id]);
 
   async function handleCreateBattle() {
+    const care = getPetCareState(profile?.petCare);
+    if (!care.canBattle) {
+      setMessage(`Energia baixa (${care.energy}/${care.maxEnergy}). Alimente o personagem antes de batalhar.`);
+      return;
+    }
+
     setBusy(true);
     setMessage("");
     setOperation("create");
@@ -81,9 +88,15 @@ export default function BattlePage() {
     try {
       setDebugMessage("Criando sala no Realtime Database...");
       const code = await createBattle(profile);
+      const energyResult = await consumeBattleEnergy(profile.id);
+      if (!energyResult.consumed) {
+        setMessage("Energia insuficiente para iniciar batalha.");
+        return;
+      }
+      await refreshProfile?.();
       setBattleCode(code);
       setCodeInput(code);
-      setDebugMessage(`Sala ${code} criada.`);
+      setDebugMessage(`Sala ${code} criada. Energia restante: ${energyResult.energy}.`);
     } catch (error) {
       setMessage(getFirebaseErrorMessage(error));
     } finally {
@@ -95,6 +108,12 @@ export default function BattlePage() {
 
   async function handleJoinBattle(event) {
     event.preventDefault();
+    const care = getPetCareState(profile?.petCare);
+    if (!care.canBattle) {
+      setMessage(`Energia baixa (${care.energy}/${care.maxEnergy}). Alimente o personagem antes de batalhar.`);
+      return;
+    }
+
     setBusy(true);
     setMessage("");
     setOperation("join");
@@ -106,8 +125,14 @@ export default function BattlePage() {
     try {
       setDebugMessage("Verificando sala...");
       const code = await joinBattle(codeInput, profile);
+      const energyResult = await consumeBattleEnergy(profile.id);
+      if (!energyResult.consumed) {
+        setMessage("Energia insuficiente para entrar na batalha.");
+        return;
+      }
+      await refreshProfile?.();
       setBattleCode(code);
-      setDebugMessage(`Entrou na sala ${code}.`);
+      setDebugMessage(`Entrou na sala ${code}. Energia restante: ${energyResult.energy}.`);
     } catch (error) {
       setMessage(getFirebaseErrorMessage(error));
     } finally {
@@ -258,6 +283,11 @@ export default function BattlePage() {
                       <span>DEF {player.stats?.defense}</span>
                       <span>VEL {player.stats?.speed}</span>
                     </div>
+                    {player.carePenalty?.id !== "full" && (
+                      <p className="battle-penalty">
+                        {player.carePenalty?.label}: {player.carePenalty?.description}
+                      </p>
+                    )}
                     {battle?.turn?.currentUid === player.uid && battle.status === "active" && <strong>Turno atual</strong>}
                   </>
                 ) : (

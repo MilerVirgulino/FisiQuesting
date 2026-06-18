@@ -590,6 +590,72 @@ label {
   color: var(--muted);
 }
 
+.pet-care-panel {
+  gap: 14px;
+}
+
+.pet-energy-track {
+  height: 16px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #eef2ff;
+}
+
+.pet-energy-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--danger), var(--accent), var(--primary));
+}
+
+.pet-penalty-card,
+.food-card {
+  display: grid;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfdff;
+}
+
+.pet-penalty-card {
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+.pet-penalty-card svg,
+.food-card svg {
+  color: var(--primary-strong);
+}
+
+.pet-penalty-card div,
+.food-card div {
+  display: grid;
+  gap: 4px;
+}
+
+.pet-penalty-card span,
+.pet-penalty-card small,
+.food-card span,
+.food-card small {
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
+.food-shop-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.food-card {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+
+.food-card button {
+  white-space: nowrap;
+}
+
 .avatar-preview img {
   width: min(180px, 65vw);
   aspect-ratio: 1;
@@ -656,6 +722,12 @@ label {
 
 .avatar-stats span {
   color: var(--muted);
+  font-weight: 800;
+}
+
+.avatar-stats small {
+  color: var(--muted);
+  font-size: 0.78rem;
   font-weight: 800;
 }
 
@@ -803,6 +875,13 @@ label {
 .battle-message {
   margin: 0;
   color: var(--primary-strong);
+  font-weight: 900;
+}
+
+.battle-penalty {
+  margin: 0;
+  color: var(--danger);
+  font-size: 0.82rem;
   font-weight: 900;
 }
 
@@ -1423,6 +1502,14 @@ label {
   .avatar-shop-actions {
     grid-column: 1 / -1;
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .food-card {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .food-card button {
+    grid-column: 1 / -1;
   }
 
   .mission-finish,

@@ -5,9 +5,31 @@
     "speed": 6,
     "hp": 10
   },
+  "statScaling": {
+    "formula": "baseStats[key] + max(0, allocatedStat - baseStats[key]) * perPoint",
+    "rounding": "round",
+    "stats": {
+      "attack": {
+        "perPoint": 1.2,
+        "description": "Cada ponto investido em ataque adiciona 1.2 ao ataque efetivo."
+      },
+      "defense": {
+        "perPoint": 1,
+        "description": "Cada ponto investido em defesa adiciona 1 ao valor efetivo de defesa."
+      },
+      "speed": {
+        "perPoint": 0.6,
+        "description": "Cada ponto investido em velocidade adiciona 0.6 a velocidade efetiva."
+      },
+      "hp": {
+        "perPoint": 3,
+        "description": "Cada ponto investido em HP adiciona 3 ao HP maximo efetivo."
+      }
+    }
+  },
   "hp": {
     "minMaxHp": 1,
-    "maxHpFormula": "max(minMaxHp, hp)"
+    "maxHpFormula": "max(minMaxHp, effectiveHp)"
   },
   "turnOrder": {
     "firstTurnRule": "higherSpeedStarts",
