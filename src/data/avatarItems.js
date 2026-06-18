@@ -1,72 +1,23 @@
+import avatarCatalog from "./avatarItems.json";
+
 export const avatarItems = {
-  egg: {
-    base: {
-      folder: "base",
-      defaultId: "chibi_body",
-      items: {
-        chibi_body: { label: "Chibi cabecao" }
+  egg: Object.fromEntries(
+    avatarCatalog.categories.map((category) => [
+      category.key,
+      {
+        folder: category.folder,
+        defaultId: category.defaultId,
+        items: category.items
       }
-    },
-    eyes: {
-      folder: "eyes",
-      defaultId: "eyes_none",
-      items: {
-        eyes_none: { label: "Nenhum", source: "svg" },
-        eyes1_commum: { label: "Comum 1", source: "png" },
-        eyes2_commum: { label: "Comum 2", source: "png" },
-        eyes3_commum: { label: "Comum 3", source: "png" },
-        
-      }
-    },
-    mouth: {
-      folder: "mouths",
-      defaultId: "mouth_none",
-      items: {
-        mouth_none: { label: "Nenhum", source: "svg" }
-      }
-    },
-    outfit: {
-      folder: "outfits",
-      defaultId: "outfit_none",
-      items: {
-        outfit_none: { label: "Nenhuma", source: "svg" }
-      }
-    },
-    hair: {
-      folder: "hair",
-      defaultId: "hair_none",
-      items: {
-        hair_none: { label: "Nenhum", source: "svg" }
-      }
-    },
-    accessories: {
-      folder: "accessories",
-      defaultId: "accessories_none",
-      items: {
-        accessories_none: { label: "Nenhum", source: "svg" }
-      }
-    }
-  }
+    ])
+  )
 };
 
-export const avatarCategories = [
-  { key: "base", label: "Formato" },
-  { key: "eyes", label: "Olhos" },
-  { key: "mouth", label: "Boca" },
-  { key: "outfit", label: "Roupa" },
-  { key: "hair", label: "Cabelo" },
-  { key: "accessories", label: "Acessorio" }
-];
+export const avatarCategories = avatarCatalog.categories
+  .filter((category) => category.visible !== false)
+  .map(({ key, label }) => ({ key, label }));
 
-export const defaultAvatar = {
-  kind: "chibi",
-  base: "chibi_body",
-  eyes: "eyes_none",
-  mouth: "mouth_none",
-  outfit: "outfit_none",
-  hair: "hair_none",
-  accessories: "accessories_none"
-};
+export const defaultAvatar = avatarCatalog.defaultAvatar;
 
 export function getAvatarOptions(category) {
   const categoryData = avatarItems.egg[category.key];
@@ -111,4 +62,14 @@ export function usesPngSprite(categoryKey, itemId) {
   const option = getAvatarOption(categoryKey, itemId);
 
   return Boolean(option && option.source !== "svg");
+}
+
+export function getAvatarItemPrice(categoryKey, itemId) {
+  const option = getAvatarOption(categoryKey, itemId);
+
+  return Number(option?.price || 0);
+}
+
+export function isFreeAvatarItem(categoryKey, itemId) {
+  return getAvatarItemPrice(categoryKey, itemId) <= 0;
 }

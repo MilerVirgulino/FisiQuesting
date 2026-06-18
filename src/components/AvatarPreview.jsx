@@ -4,7 +4,11 @@ import { defaultAvatar, getAvatarOption, usesPngSprite } from "../data/avatarIte
 function normalizeAvatar(avatar) {
   return {
     ...defaultAvatar,
-    ...(avatar || {})
+    ...(avatar || {}),
+    shirts: avatar?.shirts || avatar?.outfit || defaultAvatar.shirts,
+    mouths: avatar?.mouths || avatar?.mouth || defaultAvatar.mouths,
+    pants: avatar?.pants || defaultAvatar.pants,
+    pets: avatar?.pets || defaultAvatar.pets
   };
 }
 
@@ -89,9 +93,11 @@ export default function AvatarPreview({ avatar, size = 128 }) {
   const hasPngBase = usesPngSprite("base", normalized.base);
   const hasPngHair = usesPngSprite("hair", normalized.hair);
   const hasPngEyes = usesPngSprite("eyes", normalized.eyes);
-  const hasPngMouth = usesPngSprite("mouth", normalized.mouth);
-  const hasPngOutfit = usesPngSprite("outfit", normalized.outfit);
+  const hasPngMouth = usesPngSprite("mouths", normalized.mouths);
+  const hasPngShirt = usesPngSprite("shirts", normalized.shirts);
+  const hasPngPants = usesPngSprite("pants", normalized.pants);
   const hasPngAccessories = usesPngSprite("accessories", normalized.accessories);
+  const hasPngPets = usesPngSprite("pets", normalized.pets);
 
   return (
     <div className="modular-avatar-preview egg-avatar-preview" style={{ width: size, height: size }}>
@@ -104,15 +110,17 @@ export default function AvatarPreview({ avatar, size = 128 }) {
         )}
         {hasPngHair ? <EggSpriteLayer category="hair" id={normalized.hair} /> : null}
         {hasPngEyes ? <EggSpriteLayer category="eyes" id={normalized.eyes} /> : null}
-        {hasPngMouth ? <EggSpriteLayer category="mouth" id={normalized.mouth} /> : null}
+        {hasPngMouth ? <EggSpriteLayer category="mouths" id={normalized.mouths} /> : null}
         {normalized.eyes !== "eyes_none" && (
           <>
             <ellipse cx="89" cy="127" rx="10" ry="5" fill="#fb7185" opacity="0.35" />
             <ellipse cx="167" cy="127" rx="10" ry="5" fill="#fb7185" opacity="0.35" />
           </>
         )}
-        {hasPngOutfit ? <EggSpriteLayer category="outfit" id={normalized.outfit} /> : null}
+        {hasPngShirt ? <EggSpriteLayer category="shirts" id={normalized.shirts} /> : null}
+        {hasPngPants ? <EggSpriteLayer category="pants" id={normalized.pants} /> : null}
         {hasPngAccessories ? <EggSpriteLayer category="accessories" id={normalized.accessories} /> : null}
+        {hasPngPets ? <EggSpriteLayer category="pets" id={normalized.pets} /> : null}
       </svg>
     </div>
   );

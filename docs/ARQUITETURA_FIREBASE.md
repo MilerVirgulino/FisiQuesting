@@ -36,6 +36,8 @@ firestore.rules
   grade: "1 ano",
   className: "A",
   totalXp: 0,
+  coins: 0,
+  ownedAvatarItems: ["eyes1_commum"],
   streak: 0,
   bestStreak: 0,
   solvedCount: 0,
@@ -43,11 +45,13 @@ firestore.rules
   avatar: {
     kind: "chibi",
     base: "chibi_body",
-    eyes: "eyes_none",
-    mouth: "mouth_none",
-    outfit: "outfit_none",
     hair: "hair_none",
+    shirts: "shirt_none",
+    eyes: "eyes_none",
+    mouths: "mouth_none",
     accessories: "accessories_none",
+    pants: "pants_none",
+    pets: "pets_none",
     level: 1,
     attack: 10,
     defense: 8,
@@ -91,6 +95,7 @@ firestore.rules
   questionIds: ["questionA", "questionB"],
   status: "open", // open | closed
   rewardXp: 50,
+  rewardCoins: 100,
   startsAt: "2026-06-17",
   endsAt: "2026-06-24",
   createdAt,
@@ -134,6 +139,10 @@ O app grava uma tentativa consolidada ao finalizar a missao, em vez de escrever 
   questionXp: 160,
   bonusXp: 50,
   xpEarned: 210,
+  rewardCoins: 100,
+  coinsEarned: 80,
+  coinsLost: 20,
+  missed: 4,
   completed: true,
   answers: [
     {
@@ -161,6 +170,7 @@ O app grava uma tentativa consolidada ao finalizar a missao, em vez de escrever 
 7. As respostas ficam locais durante a missao.
 8. Ao finalizar, o app grava `missionAttempts`, atualiza `userProgress` e atualiza os totais do usuario em uma unica transacao.
 9. Se o usuario tiver avatar, a conclusao da missao libera pontos para distribuir em ataque, defesa, velocidade e HP.
+10. A missao semanal pode conceder moedas. O professor define o maximo em `rewardCoins`; cada erro reduz a recompensa proporcionalmente.
 
 ## Painel do professor
 
@@ -177,7 +187,7 @@ O painel admin mostra informacoes que nao aparecem para alunos:
 
 O avatar atual e um chibi cabecao personalizavel desenhado em `src/components/AvatarPreview.jsx`, sem spritesheet e sem recorte automatico. Modelos PNG para desenhar novos itens ficam em `assets/egg-templates/`, e sprites finais carregados pelo app ficam em `public/assets/egg-sprites/`.
 
-A lista exibida pelo app fica em `src/data/avatarItems.js`.
+A lista exibida pelo app fica em `src/data/avatarItems.json`. Precos tambem ficam no frontend, no campo `price` de cada item. No Firestore o usuario guarda apenas `coins` e `ownedAvatarItems`.
 
 O avatar usa atributos simples:
 

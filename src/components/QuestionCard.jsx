@@ -20,6 +20,7 @@ export default function QuestionCard({ question, onAnswer, index }) {
         <span>{question.area}</span>
         <span>{question.difficulty}</span>
         <strong>+{question.xp} XP</strong>
+        {question.coinValue > 0 && <strong>+{question.coinValue} moedas</strong>}
       </div>
       <h2>{question.statement}</h2>
       <form onSubmit={handleSubmit} className="answer-form">

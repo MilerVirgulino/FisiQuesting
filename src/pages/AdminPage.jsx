@@ -6,6 +6,8 @@ import { createQuestion, deleteQuestion, listAllQuestions, updateQuestion } from
 
 const areas = ["Mecanica", "Termologia", "Optica", "Eletricidade", "Ondulatoria", "Fisica Moderna"];
 const difficulties = ["facil", "medio", "dificil"];
+const gradeOptions = ["1 ano", "2 ano", "3 ano"];
+const classOptions = ["A", "B", "C", "D", "E"];
 
 const initialQuestion = {
   statement: "",
@@ -25,6 +27,7 @@ const initialMission = {
   targetClass: "A",
   questionIds: [],
   rewardXp: 50,
+  rewardCoins: 100,
   status: "open",
   startsAt: "",
   endsAt: ""
@@ -264,19 +267,23 @@ export default function AdminPage() {
                 </label>
                 <label>
                   Serie
-                  <input
+                  <select
                     value={mission.targetGrade}
                     onChange={(event) => setMission({ ...mission, targetGrade: event.target.value })}
                     required
-                  />
+                  >
+                    {gradeOptions.map((grade) => <option value={grade} key={grade}>{grade}</option>)}
+                  </select>
                 </label>
                 <label>
                   Turma
-                  <input
+                  <select
                     value={mission.targetClass}
                     onChange={(event) => setMission({ ...mission, targetClass: event.target.value })}
                     required
-                  />
+                  >
+                    {classOptions.map((className) => <option value={className} key={className}>{className}</option>)}
+                  </select>
                 </label>
                 <label>
                   XP bonus
@@ -285,6 +292,15 @@ export default function AdminPage() {
                     min="0"
                     value={mission.rewardXp}
                     onChange={(event) => setMission({ ...mission, rewardXp: event.target.value })}
+                  />
+                </label>
+                <label>
+                  Moedas maximas
+                  <input
+                    type="number"
+                    min="0"
+                    value={mission.rewardCoins}
+                    onChange={(event) => setMission({ ...mission, rewardCoins: event.target.value })}
                   />
                 </label>
                 <label>
@@ -402,7 +418,9 @@ export default function AdminPage() {
                 <article className="table-row" key={item.id}>
                   <div>
                     <strong>{item.title}</strong>
-                    <span>{item.targetGrade} · {item.targetClass} · {item.questionIds?.length || 0} questoes · {item.status}</span>
+                    <span>
+                      {item.targetGrade} · {item.targetClass} · {item.questionIds?.length || 0} questoes · {item.status} · {item.rewardCoins || 0} moedas
+                    </span>
                   </div>
                   <button
                     type="button"
@@ -641,23 +659,33 @@ export default function AdminPage() {
                   <span>{user.email} · {user.status} · {user.role} · {user.grade || "sem serie"} / {user.className || "sem turma"}</span>
                 </div>
                 <div className="class-editor">
-                  <input
+                  <select
                     aria-label="Serie"
-                    placeholder="Serie"
-                    defaultValue={user.grade || ""}
-                    onBlur={(event) => updateUserClass(user.id, { grade: event.target.value, className: user.className || "" }).then(refresh)}
-                  />
-                  <input
+                    value={gradeOptions.includes(user.grade) ? user.grade : ""}
+                    onChange={(event) => updateUserClass(user.id, {
+                      grade: event.target.value,
+                      className: classOptions.includes(user.className) ? user.className : "A"
+                    }).then(refresh)}
+                  >
+                    <option value="">Serie</option>
+                    {gradeOptions.map((grade) => <option value={grade} key={grade}>{grade}</option>)}
+                  </select>
+                  <select
                     aria-label="Turma"
-                    placeholder="Turma"
-                    defaultValue={user.className || ""}
-                    onBlur={(event) => updateUserClass(user.id, { grade: user.grade || "", className: event.target.value }).then(refresh)}
-                  />
+                    value={classOptions.includes(user.className) ? user.className : ""}
+                    onChange={(event) => updateUserClass(user.id, {
+                      grade: gradeOptions.includes(user.grade) ? user.grade : "1 ano",
+                      className: event.target.value
+                    }).then(refresh)}
+                  >
+                    <option value="">Turma</option>
+                    {classOptions.map((className) => <option value={className} key={className}>{className}</option>)}
+                  </select>
                 </div>
                 <div className="row-actions">
                   <button type="button" onClick={() => approveUser(user.id, {
-                    grade: user.grade || "1 ano",
-                    className: user.className || "A"
+                    grade: gradeOptions.includes(user.grade) ? user.grade : "1 ano",
+                    className: classOptions.includes(user.className) ? user.className : "A"
                   }).then(refresh)}>
                     Aprovar
                   </button>

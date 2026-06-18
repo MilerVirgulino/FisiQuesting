@@ -1,0 +1,37 @@
+{
+  "baseStats": {
+    "attack": 10,
+    "defense": 8,
+    "speed": 6,
+    "hp": 10
+  },
+  "hp": {
+    "minMaxHp": 1,
+    "maxHpFormula": "max(minMaxHp, hp)"
+  },
+  "turnOrder": {
+    "firstTurnRule": "higherSpeedStarts",
+    "tieRule": "roomHostStarts"
+  },
+  "damage": {
+    "formula": "max(minDamage, round((attack * attackScale - defense * defenseScale) * randomMultiplier))",
+    "attackScale": 1.5,
+    "defenseScale": 0.7,
+    "minDamage": 2,
+    "rounding": "round",
+    "randomMultiplier": {
+      "enabled": true,
+      "min": 0.75,
+      "max": 1.25,
+      "precision": 2,
+      "description": "Multiplicador sorteado a cada ataque para variar o dano final."
+    }
+  },
+  "guard": {
+    "enabled": true,
+    "damageMultiplier": 0.5,
+    "minDamageWhenGuarding": 1,
+    "rounding": "ceil",
+    "description": "Defender reduz o dano recebido no proximo ataque."
+  }
+}

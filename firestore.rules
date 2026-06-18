@@ -40,6 +40,9 @@ service cloud.firestore {
         "bestStreak",
         "solvedCount",
         "correctCount",
+        "coins",
+        "ownedAvatarItems",
+        "completedMissionIds",
         "avatar",
         "updatedAt"
       ]);
@@ -78,7 +81,14 @@ service cloud.firestore {
     }
 
     match /missionAttempts/{attemptId} {
-      allow read: if isAdmin() || (signedIn() && resource.data.userId == request.auth.uid);
+      allow read: if isAdmin()
+        || (
+          signedIn()
+          && (
+            attemptId.matches(request.auth.uid + "_.*")
+            || resource.data.userId == request.auth.uid
+          )
+        );
       allow create: if isApproved()
         && attemptId.matches(request.auth.uid + "_.*")
         && request.resource.data.userId == request.auth.uid;
@@ -91,7 +101,9 @@ service cloud.firestore {
     }
 
     match /userProgress/{progressId} {
-      allow read: if isAdmin() || (signedIn() && resource.data.userId == request.auth.uid);
+      allow read: if isAdmin()
+        || isOwnProgressId(progressId)
+        || (signedIn() && resource.data.userId == request.auth.uid);
       allow create: if isApproved()
         && isOwnProgressId(progressId)
         && request.resource.data.userId == request.auth.uid;

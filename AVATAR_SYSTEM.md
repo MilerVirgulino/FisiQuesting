@@ -16,7 +16,7 @@ Arquivos:
 - `guides/chibi-body-guide.png`: chibi cabecao com linhas-guia para rosto, cabelo, roupa, bracos e pes.
 - `items/chibi-body-item-template.png`: contorno leve para desenhar itens por cima.
 
-Todos os modelos tem `256x256` px, fundo transparente e o personagem centralizado. Ao criar uma roupa, cabelo, olho ou boca em pixel art, mantenha o arquivo nessa mesma dimensao para facilitar encaixar depois no app.
+Todos os modelos tem `256x256` px, fundo transparente e o personagem centralizado. Ao criar cabelo, camisa, olhos, bocas, acessorios, calcas ou pets em pixel art, mantenha o arquivo nessa mesma dimensao para facilitar encaixar depois no app.
 
 ## Onde colocar sprites novos
 
@@ -33,9 +33,11 @@ public/assets/egg-sprites/
   base/
   eyes/
   mouths/
-  outfits/
   hair/
+  shirts/
   accessories/
+  pants/
+  pets/
 ```
 
 O `id` cadastrado no objeto deve ser igual ao nome do arquivo, sem `.png`.
@@ -43,12 +45,12 @@ O `id` cadastrado no objeto deve ser igual ao nome do arquivo, sem `.png`.
 Exemplo:
 
 ```js
-outfit: {
-  folder: "outfits",
-  defaultId: "outfit_none",
+shirts: {
+  folder: "shirts",
+  defaultId: "shirt_none",
   items: {
-    outfit_none: { label: "Nenhuma", source: "svg" },
-    roupa_azul: { label: "Roupa azul" }
+    shirt_none: { label: "Nenhuma", source: "svg" },
+    camisa_azul: { label: "Camisa azul", source: "png", price: 20 }
   }
 }
 ```
@@ -56,10 +58,11 @@ outfit: {
 Arquivo correspondente:
 
 ```txt
-public/assets/egg-sprites/outfits/roupa_azul.png
+public/assets/egg-sprites/shirts/camisa_azul.png
 ```
 
 Itens sem `source: "svg"` sao tratados como PNG automaticamente.
+Itens com `price` maior que zero precisam ser comprados com moedas antes de salvar.
 
 ## Como o app salva o avatar
 
@@ -70,11 +73,13 @@ O documento do usuario salva escolhas simples:
   avatar: {
     kind: "chibi",
     base: "chibi_body",
-    eyes: "eyes_none",
-    mouth: "mouth_none",
-    outfit: "outfit_none",
     hair: "hair_none",
-    accessories: "accessories_none"
+    shirts: "shirt_none",
+    eyes: "eyes_none",
+    mouths: "mouth_none",
+    accessories: "accessories_none",
+    pants: "pants_none",
+    pets: "pets_none"
   }
 }
 ```
@@ -84,7 +89,7 @@ O documento do usuario salva escolhas simples:
 As opcoes que aparecem no editor ficam em:
 
 ```txt
-src/data/avatarItems.js
+src/data/avatarItems.json
 ```
 
 O desenho atual fica em:
@@ -93,4 +98,4 @@ O desenho atual fica em:
 src/components/AvatarPreview.jsx
 ```
 
-Quando um item novo sair do editor de pixel art, coloque o PNG na pasta publica da categoria e adicione uma entrada em `items` usando o mesmo `id` do arquivo.
+Quando um item novo sair do editor de pixel art, coloque o PNG na pasta publica da categoria e adicione uma entrada em `items` usando o mesmo `id` do arquivo. O arquivo `src/data/avatarItems.js` so transforma esse JSON em funcoes para o app.

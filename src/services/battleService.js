@@ -1,4 +1,5 @@
 import { auth, realtimeDb } from "../firebase-init";
+import battleBalance from "../data/battleBalance.json";
 import { getBattleProfile } from "./avatarStats";
 
 const realtimeTimeoutMs = 8000;
@@ -139,14 +140,40 @@ function appendLog(battle, message) {
   return logs;
 }
 
+function getRandomDamageMultiplier() {
+  const config = battleBalance.damage.randomMultiplier;
+  if (!config?.enabled) return 1;
+
+  const min = Number(config.min ?? 1);
+  const max = Number(config.max ?? 1);
+  const precision = Number(config.precision ?? 2);
+  const multiplier = min + Math.random() * (max - min);
+
+  return Number(multiplier.toFixed(precision));
+}
+
+function roundByConfig(value, mode) {
+  if (mode === "ceil") return Math.ceil(value);
+  if (mode === "floor") return Math.floor(value);
+  return Math.round(value);
+}
+
 function resolveAttack(actor, target) {
   const attack = Number(actor.stats?.attack || 10);
   const defense = Number(target.stats?.defense || 8);
-  const baseDamage = Math.max(2, Math.round(attack * 1.5 - defense * 0.7));
-  const damage = target.guarding ? Math.max(1, Math.ceil(baseDamage / 2)) : baseDamage;
+  const randomMultiplier = getRandomDamageMultiplier();
+  const rawDamage = (attack * battleBalance.damage.attackScale - defense * battleBalance.damage.defenseScale) * randomMultiplier;
+  const baseDamage = Math.max(Number(battleBalance.damage.minDamage), roundByConfig(rawDamage, battleBalance.damage.rounding));
+  const damage = target.guarding && battleBalance.guard.enabled
+    ? Math.max(
+        Number(battleBalance.guard.minDamageWhenGuarding),
+        roundByConfig(baseDamage * battleBalance.guard.damageMultiplier, battleBalance.guard.rounding)
+      )
+    : baseDamage;
   const nextHp = Math.max(0, Number(target.hp || 0) - damage);
 
   return {
+    randomMultiplier,
     damage,
     nextHp,
     finished: nextHp <= 0
@@ -328,7 +355,10 @@ export async function performBattleAction(code, uid, action) {
       guarding: false,
       hp: outcome.nextHp
     };
-    nextBattle.logs = appendLog(nextBattle, `${actor.name} atacou e causou ${outcome.damage} de dano.`);
+    nextBattle.logs = appendLog(
+      nextBattle,
+      `${actor.name} atacou e causou ${outcome.damage} de dano. Multiplicador: x${outcome.randomMultiplier}.`
+    );
 
     if (outcome.finished) {
       nextBattle.status = "finished";

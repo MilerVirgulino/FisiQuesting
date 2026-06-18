@@ -1,12 +1,8 @@
 import { doc, serverTimestamp, updateDoc } from "firebase/firestore";
 import { db } from "../firebase-init";
+import battleBalance from "../data/battleBalance.json";
 
-export const baseBattleStats = {
-  attack: 10,
-  defense: 8,
-  speed: 6,
-  hp: 10
-};
+export const baseBattleStats = battleBalance.baseStats;
 
 export function getAvatarLevel(totalXp = 0) {
   return Math.max(1, Math.floor(Number(totalXp || 0) / 100) + 1);
@@ -36,7 +32,7 @@ export function getAvailableStatPoints({ totalXp = 0, avatar = {} }) {
 export function getBattleProfile(profile) {
   const avatar = profile?.avatar || {};
   const stats = normalizeBattleStats(avatar);
-  const maxHp = 80 + stats.hp * 10;
+  const maxHp = Math.max(Number(battleBalance.hp.minMaxHp), Number(stats.hp || baseBattleStats.hp));
 
   return {
     uid: profile?.id,

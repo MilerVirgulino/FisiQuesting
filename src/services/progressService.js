@@ -3,6 +3,7 @@ import {
   doc,
   getDocs,
   increment,
+  arrayUnion,
   query,
   runTransaction,
   serverTimestamp,
@@ -15,6 +16,19 @@ import { todayKey } from "../utils/date";
 export async function listDailyQuests() {
   const snapshot = await getDocs(query(collection(db, "dailyQuests"), where("active", "==", true)));
   return snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
+}
+
+export async function listSubmittedMissionAttemptIds(userId) {
+  if (!userId) return new Set();
+
+  const snapshot = await getDocs(
+    query(
+      collection(db, "missionAttempts"),
+      where("userId", "==", userId)
+    )
+  );
+
+  return new Set(snapshot.docs.map((item) => item.data().missionId).filter(Boolean));
 }
 
 export async function submitAnswer({ userId, question, selectedIndex, missionId = "free" }) {
@@ -125,6 +139,12 @@ export async function submitMissionAttempt({ userId, mission, questions, answers
   const questionXp = answerList.reduce((total, answer) => total + answer.xpEarned, 0);
   const completed = solved === questions.length && questions.length > 0;
   const bonusXp = completed ? Number(mission.rewardXp || 0) : 0;
+  const rewardCoins = completed ? Number(mission.rewardCoins || 0) : 0;
+  const coinsEarned = completed && questions.length > 0
+    ? Math.max(0, Math.round((rewardCoins * correct) / questions.length))
+    : 0;
+  const missed = Math.max(0, questions.length - correct);
+  const coinsLost = Math.max(0, rewardCoins - coinsEarned);
   const xpEarned = questionXp + bonusXp;
   const areas = answerList.reduce((accumulator, answer) => {
     accumulator[answer.area] = (accumulator[answer.area] || 0) + 1;
@@ -165,6 +185,10 @@ export async function submitMissionAttempt({ userId, mission, questions, answers
       questionXp,
       bonusXp,
       xpEarned,
+      rewardCoins,
+      coinsEarned,
+      coinsLost,
+      missed,
       completed,
       answers: answerList,
       submittedAt: serverTimestamp()
@@ -198,6 +222,8 @@ export async function submitMissionAttempt({ userId, mission, questions, answers
       userRef,
       {
         totalXp: increment(xpEarned),
+        coins: increment(coinsEarned),
+        completedMissionIds: arrayUnion(mission.id),
         streak: nextStreak,
         bestStreak: nextBestStreak,
         solvedCount: increment(solved),
@@ -207,7 +233,19 @@ export async function submitMissionAttempt({ userId, mission, questions, answers
       { merge: true }
     );
 
-    return { alreadySubmitted: false, solved, correct, questionXp, bonusXp, xpEarned, completed };
+    return {
+      alreadySubmitted: false,
+      solved,
+      correct,
+      questionXp,
+      bonusXp,
+      xpEarned,
+      rewardCoins,
+      coinsEarned,
+      coinsLost,
+      missed,
+      completed
+    };
   });
 }
 

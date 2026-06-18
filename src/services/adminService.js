@@ -10,6 +10,7 @@ import {
   updateDoc
 } from "firebase/firestore";
 import { db } from "../firebase-init";
+import { normalizeClassText } from "./missionService";
 
 export async function listUsers() {
   const snapshot = await getDocs(query(collection(db, "users"), orderBy("createdAt", "desc")));
@@ -19,6 +20,8 @@ export async function listUsers() {
 export function approveUser(userId, patch = {}) {
   return updateDoc(doc(db, "users", userId), {
     ...patch,
+    ...(patch.grade !== undefined ? { grade: normalizeClassText(patch.grade) } : {}),
+    ...(patch.className !== undefined ? { className: normalizeClassText(patch.className) } : {}),
     status: "approved",
     updatedAt: serverTimestamp()
   });
@@ -26,8 +29,8 @@ export function approveUser(userId, patch = {}) {
 
 export function updateUserClass(userId, patch) {
   return updateDoc(doc(db, "users", userId), {
-    grade: patch.grade || "",
-    className: patch.className || "",
+    grade: normalizeClassText(patch.grade),
+    className: normalizeClassText(patch.className),
     updatedAt: serverTimestamp()
   });
 }

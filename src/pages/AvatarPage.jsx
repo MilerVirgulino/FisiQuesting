@@ -23,11 +23,15 @@ export default function AvatarPage() {
     <section className="page-stack">
       <div className="avatar-hero">
         <div>
-          <p className="eyebrow">Ovo avatar</p>
-          <h2>Personalize seu ovo de batalha.</h2>
-          <span>Missoes rendem XP, sobem seu nivel e liberam pontos para batalha.</span>
+          <p className="eyebrow">Avatar chibi</p>
+          <h2>Personalize seu personagem de batalha.</h2>
+          <span>Missoes rendem XP, moedas e pontos para batalha.</span>
         </div>
-        <Sparkles size={42} />
+        <div className="coin-balance">
+          <Sparkles size={24} />
+          <strong>{profile?.coins || 0}</strong>
+          <span>moedas</span>
+        </div>
       </div>
 
       <AvatarEditor userId={firebaseUser.uid} profile={profile} onSaved={refreshProfile} />

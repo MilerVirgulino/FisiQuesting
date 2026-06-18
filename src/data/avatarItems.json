@@ -1,0 +1,162 @@
+{
+  "defaultAvatar": {
+    "kind": "chibi",
+    "base": "chibi_body",
+    "hair": "hair_none",
+    "shirts": "shirt_none",
+    "eyes": "eyes_none",
+    "mouths": "mouth_none",
+    "accessories": "accessories_none",
+    "pants": "pants_none",
+    "pets": "pets_none"
+  },
+  "categories": [
+    {
+      "key": "base",
+      "label": "Base",
+      "folder": "base",
+      "defaultId": "chibi_body",
+      "visible": false,
+      "items": {
+        "chibi_body": {
+          "label": "Chibi cabecao",
+          "source": "png"
+        }
+      }
+    },
+    {
+      "key": "hair",
+      "label": "Cabelo",
+      "folder": "hair",
+      "defaultId": "hair_none",
+      "items": {
+        "hair_none": {
+          "label": "Nenhum",
+          "source": "svg"
+        },
+        "gorrinho_feio": {
+          "label": "Gorrinho Feio",
+          "source": "png",
+          "price": 10
+        }
+      }
+    },
+    {
+      "key": "shirts",
+      "label": "Camisa",
+      "folder": "shirts",
+      "defaultId": "shirt_none",
+      "items": {
+        "shirt_none": {
+          "label": "Nenhuma",
+          "source": "svg"
+        },
+        "camisa_azul": {
+          "label": "Camisa Azul",
+          "source": "png",
+          "price": 20
+        }
+      }
+    },
+    {
+      "key": "eyes",
+      "label": "Olhos",
+      "folder": "eyes",
+      "defaultId": "eyes_none",
+      "items": {
+        "eyes_none": {
+          "label": "Nenhum",
+          "source": "svg"
+        },
+        "eyes1_commum": {
+          "label": "Comum 1",
+          "source": "png",
+          "price": 25
+        },
+        "eyes2_commum": {
+          "label": "Comum 2",
+          "source": "png",
+          "price": 25
+        },
+        "eyes3_commum": {
+          "label": "Comum 3",
+          "source": "png",
+          "price": 35
+        },
+        "eyes4_commum": {
+          "label": "Comum 4",
+          "source": "png",
+          "price": 20
+        }
+      }
+    },
+    {
+      "key": "mouths",
+      "label": "Bocas",
+      "folder": "mouths",
+      "defaultId": "mouth_none",
+      "items": {
+        "mouth_none": {
+          "label": "Nenhuma",
+          "source": "svg"
+        }
+      }
+    },
+    {
+      "key": "accessories",
+      "label": "Acessorios",
+      "folder": "accessories",
+      "defaultId": "accessories_none",
+      "items": {
+        "accessories_none": {
+          "label": "Nenhum",
+          "source": "svg"
+        },
+        "machado": {
+          "label": "Machado",
+          "source": "png",
+          "price": 1
+        }
+      }
+    },
+    {
+      "key": "pants",
+      "label": "Calcas",
+      "folder": "pants",
+      "defaultId": "pants_none",
+      "items": {
+        "pants_none": {
+          "label": "Nenhuma",
+          "source": "svg"
+        },
+        "shorte_feshion": {
+          "label": "Shorte Fashion",
+          "source": "png",
+          "price": 1
+        }
+      }
+    },
+    {
+      "key": "pets",
+      "label": "Pets",
+      "folder": "pets",
+      "defaultId": "pets_none",
+      "items": {
+        "pets_none": {
+          "label": "Nenhum",
+          "source": "svg"
+        },
+        "doguinho": {
+          "label": "Doginho",
+          "source": "png",
+          "price": 1
+        },
+        "catinho": {
+          "label": "Catinho",
+          "source": "png",
+          "price": 1
+        }
+      }
+    }
+  ]
+}
