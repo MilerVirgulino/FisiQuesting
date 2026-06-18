@@ -41,19 +41,13 @@ firestore.rules
   solvedCount: 0,
   correctCount: 0,
   avatar: {
-    kind: "egg",
-    base: "egg_plain",
-    eyes: "eyes_dot",
-    mouth: "mouth_smile",
-    outfit: "outfit_scarf",
-    hair: "hair_sprout",
+    kind: "chibi",
+    base: "chibi_body",
+    eyes: "eyes_none",
+    mouth: "mouth_none",
+    outfit: "outfit_none",
+    hair: "hair_none",
     accessories: "accessories_none",
-    colors: {
-      egg: "#fff2c7",
-      accent: "#38bdf8",
-      outfit: "#2563eb",
-      hair: "#3b2416"
-    },
     level: 1,
     attack: 10,
     defense: 8,
@@ -179,9 +173,9 @@ O painel admin mostra informacoes que nao aparecem para alunos:
 - abertura/fechamento de missoes semanais;
 - selecao manual das questoes de cada missao.
 
-## Ovo avatar e batalha
+## Avatar chibi e batalha
 
-O avatar atual e um ovo personalizavel desenhado em `src/components/AvatarPreview.jsx`, sem spritesheet e sem recorte automatico. Modelos PNG para desenhar novos itens ficam em `assets/egg-templates/`, e sprites finais carregados pelo app ficam em `public/assets/egg-sprites/`.
+O avatar atual e um chibi cabecao personalizavel desenhado em `src/components/AvatarPreview.jsx`, sem spritesheet e sem recorte automatico. Modelos PNG para desenhar novos itens ficam em `assets/egg-templates/`, e sprites finais carregados pelo app ficam em `public/assets/egg-sprites/`.
 
 A lista exibida pelo app fica em `src/data/avatarItems.js`.
 

@@ -1,6 +1,6 @@
-# Sistema de Ovo Avatar
+# Sistema de Avatar Chibi
 
-O avatar atual foi simplificado para um ovo personalizavel. O app desenha o personagem em SVG dentro de `src/components/AvatarPreview.jsx`, sem spritesheet, manifesto ou recorte automatico.
+O avatar atual usa um chibi cabecao personalizavel. O app desenha o personagem base em SVG dentro de `src/components/AvatarPreview.jsx`, sem spritesheet, manifesto ou recorte automatico.
 
 ## Onde ficam os modelos PNG
 
@@ -12,11 +12,11 @@ assets/egg-templates/
 
 Arquivos:
 
-- `base/egg-base.png`: ovo limpo em PNG transparente.
-- `guides/egg-guide.png`: ovo com linhas-guia para rosto, cabelo e roupa.
-- `items/egg-item-template.png`: contorno leve para desenhar itens por cima.
+- `base/chibi-body-base.png`: chibi cabecao limpo em PNG transparente.
+- `guides/chibi-body-guide.png`: chibi cabecao com linhas-guia para rosto, cabelo, roupa, bracos e pes.
+- `items/chibi-body-item-template.png`: contorno leve para desenhar itens por cima.
 
-Todos os modelos tem `256x256` px, fundo transparente e o ovo centralizado. Ao criar uma roupa, cabelo, olho ou boca em pixel art, mantenha o arquivo nessa mesma dimensao para facilitar encaixar depois no app.
+Todos os modelos tem `256x256` px, fundo transparente e o personagem centralizado. Ao criar uma roupa, cabelo, olho ou boca em pixel art, mantenha o arquivo nessa mesma dimensao para facilitar encaixar depois no app.
 
 ## Onde colocar sprites novos
 
@@ -45,9 +45,9 @@ Exemplo:
 ```js
 outfit: {
   folder: "outfits",
-  defaultId: "outfit_scarf",
+  defaultId: "outfit_none",
   items: {
-    outfit_scarf: { label: "Cachecol", source: "svg" },
+    outfit_none: { label: "Nenhuma", source: "svg" },
     roupa_azul: { label: "Roupa azul" }
   }
 }
@@ -68,18 +68,13 @@ O documento do usuario salva escolhas simples:
 ```js
 {
   avatar: {
-    kind: "egg",
-    base: "egg_plain",
-    eyes: "eyes_dot",
-    mouth: "mouth_smile",
-    outfit: "outfit_scarf",
-    hair: "hair_sprout",
-    colors: {
-      egg: "#fff2c7",
-      accent: "#f59e0b",
-      outfit: "#2563eb",
-      hair: "#3b2416"
-    }
+    kind: "chibi",
+    base: "chibi_body",
+    eyes: "eyes_none",
+    mouth: "mouth_none",
+    outfit: "outfit_none",
+    hair: "hair_none",
+    accessories: "accessories_none"
   }
 }
 ```

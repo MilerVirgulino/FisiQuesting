@@ -3,22 +3,11 @@ import AvatarPreview from "./AvatarPreview.jsx";
 import { avatarCategories, defaultAvatar, getAvatarOptions } from "../data/avatarItems";
 import { saveUserAvatar } from "../services/avatarService";
 
-const colorLabels = {
-  egg: "Cor do ovo",
-  accent: "Detalhes",
-  outfit: "Roupa",
-  hair: "Cabelo"
-};
-
 function normalizeAvatar(avatar) {
   const normalized = {
     ...defaultAvatar,
     ...(avatar || {}),
-    kind: "egg",
-    colors: {
-      ...defaultAvatar.colors,
-      ...(avatar?.colors || {})
-    }
+    kind: "chibi"
   };
 
   avatarCategories.forEach((category) => {
@@ -70,27 +59,8 @@ export default function AvatarEditor({ userId, profile, onSaved }) {
           ))}
         </div>
 
-        <div className="avatar-color-grid">
-          {Object.entries(avatar.colors).map(([key, value]) => (
-            <label key={key}>
-              {colorLabels[key] || key}
-              <input
-                type="color"
-                value={value}
-                onChange={(event) => setAvatar({
-                  ...avatar,
-                  colors: {
-                    ...avatar.colors,
-                    [key]: event.target.value
-                  }
-                })}
-              />
-            </label>
-          ))}
-        </div>
-
         <button type="submit" disabled={saving}>
-          {saving ? "Salvando..." : "Salvar ovo"}
+          {saving ? "Salvando..." : "Salvar avatar"}
         </button>
       </form>
     </section>

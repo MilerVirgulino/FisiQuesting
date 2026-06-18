@@ -2,54 +2,41 @@ export const avatarItems = {
   egg: {
     base: {
       folder: "base",
-      defaultId: "egg_plain",
+      defaultId: "chibi_body",
       items: {
-        egg_plain: { label: "Ovo simples", source: "svg" },
-        egg_spots: { label: "Pintinhas", source: "svg" },
-        egg_stripes: { label: "Listras", source: "svg" },
-        egg_shell: { label: "Casca quebrada", source: "svg" }
+        chibi_body: { label: "Chibi cabecao" }
       }
     },
     eyes: {
       folder: "eyes",
-      defaultId: "eyes_dot",
+      defaultId: "eyes_none",
       items: {
-        eyes_dot: { label: "Pontinhos", source: "svg" },
-        eyes_happy: { label: "Felizes", source: "svg" },
-        eyes_sleepy: { label: "Sonolentos", source: "svg" },
-        eyes_star: { label: "Estrela", source: "svg" }
+        eyes_none: { label: "Nenhum", source: "svg" },
+        eyes1_commum: { label: "Comum 1", source: "png" },
+        eyes2_commum: { label: "Comum 2", source: "png" },
+        eyes3_commum: { label: "Comum 3", source: "png" },
+        
       }
     },
     mouth: {
       folder: "mouths",
-      defaultId: "mouth_smile",
+      defaultId: "mouth_none",
       items: {
-        mouth_smile: { label: "Sorriso", source: "svg" },
-        mouth_o: { label: "Surpreso", source: "svg" },
-        mouth_calm: { label: "Calmo", source: "svg" },
-        mouth_grin: { label: "Animado", source: "svg" }
+        mouth_none: { label: "Nenhum", source: "svg" }
       }
     },
     outfit: {
       folder: "outfits",
-      defaultId: "outfit_scarf",
+      defaultId: "outfit_none",
       items: {
-        outfit_none: { label: "Nenhuma", source: "svg" },
-        outfit_scarf: { label: "Cachecol", source: "svg" },
-        outfit_shirt: { label: "Camiseta", source: "svg" },
-        outfit_cape: { label: "Capa", source: "svg" },
-        outfit_teste: { label: "teste", source: "png" },
-        gravata_borboleta: { label: "Gravata Borboleta", source: "png" }
+        outfit_none: { label: "Nenhuma", source: "svg" }
       }
     },
     hair: {
       folder: "hair",
-      defaultId: "hair_sprout",
+      defaultId: "hair_none",
       items: {
-        hair_none: { label: "Nenhum", source: "svg" },
-        hair_sprout: { label: "Broto", source: "svg" },
-        hair_curl: { label: "Topete", source: "svg" },
-        hair_cap: { label: "Gorro", source: "svg" }
+        hair_none: { label: "Nenhum", source: "svg" }
       }
     },
     accessories: {
@@ -72,19 +59,13 @@ export const avatarCategories = [
 ];
 
 export const defaultAvatar = {
-  kind: "egg",
-  base: "egg_plain",
-  eyes: "eyes_dot",
-  mouth: "mouth_smile",
-  outfit: "outfit_scarf",
-  hair: "hair_sprout",
-  accessories: "accessories_none",
-  colors: {
-    egg: "#fff2c7",
-    accent: "#38bdf8",
-    outfit: "#2563eb",
-    hair: "#3b2416"
-  }
+  kind: "chibi",
+  base: "chibi_body",
+  eyes: "eyes_none",
+  mouth: "mouth_none",
+  outfit: "outfit_none",
+  hair: "hair_none",
+  accessories: "accessories_none"
 };
 
 export function getAvatarOptions(category) {
