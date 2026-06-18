@@ -40,6 +40,30 @@ firestore.rules
   bestStreak: 0,
   solvedCount: 0,
   correctCount: 0,
+  avatar: {
+    kind: "egg",
+    base: "egg_plain",
+    eyes: "eyes_dot",
+    mouth: "mouth_smile",
+    outfit: "outfit_scarf",
+    hair: "hair_sprout",
+    accessories: "accessories_none",
+    colors: {
+      egg: "#fff2c7",
+      accent: "#38bdf8",
+      outfit: "#2563eb",
+      hair: "#3b2416"
+    },
+    level: 1,
+    attack: 10,
+    defense: 8,
+    speed: 6,
+    hp: 10,
+    power: 10,
+    energy: 10,
+    wins: 0,
+    losses: 0
+  },
   createdAt,
   updatedAt
 }
@@ -142,6 +166,7 @@ O app grava uma tentativa consolidada ao finalizar a missao, em vez de escrever 
 6. Ao iniciar, a ordem das questoes e das alternativas e embaralhada com seed baseada em `uid + missionId`.
 7. As respostas ficam locais durante a missao.
 8. Ao finalizar, o app grava `missionAttempts`, atualiza `userProgress` e atualiza os totais do usuario em uma unica transacao.
+9. Se o usuario tiver avatar, a conclusao da missao libera pontos para distribuir em ataque, defesa, velocidade e HP.
 
 ## Painel do professor
 
@@ -153,6 +178,23 @@ O painel admin mostra informacoes que nao aparecem para alunos:
 - XP medio por turma;
 - abertura/fechamento de missoes semanais;
 - selecao manual das questoes de cada missao.
+
+## Ovo avatar e batalha
+
+O avatar atual e um ovo personalizavel desenhado em `src/components/AvatarPreview.jsx`, sem spritesheet e sem recorte automatico. Modelos PNG para desenhar novos itens ficam em `assets/egg-templates/`, e sprites finais carregados pelo app ficam em `public/assets/egg-sprites/`.
+
+A lista exibida pelo app fica em `src/data/avatarItems.js`.
+
+O avatar usa atributos simples:
+
+- `power`: sobe com acertos;
+- `defense`: sobe com tentativas e erros corrigidos;
+- `energy`: sobe ao concluir missoes;
+- `attack`, `speed` e `hp`: atributos usados pelo sistema novo de batalha;
+- `level`: sobe ao completar missoes;
+- `wins` e `losses`: reservado para duelos futuros.
+
+O caminho recomendado para duelos e usar batalhas assincronas entre alunos da mesma turma. A forca final pode combinar atributos do avatar, acertos recentes e bonus por area da Fisica, mas a resolucao da batalha deve ir para Cloud Functions para evitar manipulacao no cliente.
 
 ## Regras de seguranca
 
@@ -169,6 +211,7 @@ O painel admin mostra informacoes que nao aparecem para alunos:
 ## Proximos passos
 
 - Cloud Function para validar tentativa consolidada e conceder XP com seguranca.
+- Cloud Function para resolver batalhas entre avatares.
 - Graficos por area da Fisica e dificuldade.
 - Importacao de questoes por CSV.
 - Escopo multi-professor por escola/turma.

@@ -1,5 +1,5 @@
 import React from "react";
-import { BookOpen, Home, LogOut, ShieldCheck } from "lucide-react";
+import { BookOpen, Home, LogOut, ShieldCheck, Swords, UserRound } from "lucide-react";
 import { NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "../services/authService.jsx";
 
@@ -33,6 +33,14 @@ export default function Layout() {
         <NavLink to="/questoes">
           <BookOpen size={20} />
           <span>Missões</span>
+        </NavLink>
+        <NavLink to="/avatar">
+          <UserRound size={20} />
+          <span>Avatar</span>
+        </NavLink>
+        <NavLink to="/batalha">
+          <Swords size={20} />
+          <span>Batalha</span>
         </NavLink>
         {isAdmin && (
           <NavLink to="/admin">

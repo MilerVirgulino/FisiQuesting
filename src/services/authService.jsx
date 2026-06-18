@@ -32,6 +32,13 @@ export function AuthProvider({ children }) {
     });
   }, []);
 
+  async function refreshProfile() {
+    if (!auth.currentUser) return;
+    const userRef = doc(db, "users", auth.currentUser.uid);
+    const snapshot = await getDoc(userRef);
+    setProfile(snapshot.exists() ? { id: snapshot.id, ...snapshot.data() } : null);
+  }
+
   const value = useMemo(
     () => ({
       firebaseUser,
@@ -39,6 +46,7 @@ export function AuthProvider({ children }) {
       loading,
       isAdmin: profile?.role === "admin",
       isApproved: profile?.status === "approved",
+      refreshProfile,
       register,
       login,
       logout: () => signOut(auth)

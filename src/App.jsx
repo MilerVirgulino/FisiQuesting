@@ -4,6 +4,8 @@ import Layout from "./components/Layout.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import { AuthProvider } from "./services/authService.jsx";
 import AdminPage from "./pages/AdminPage.jsx";
+import AvatarPage from "./pages/AvatarPage.jsx";
+import BattlePage from "./pages/BattlePage.jsx";
 import DashboardPage from "./pages/DashboardPage.jsx";
 import LoginPage from "./pages/LoginPage.jsx";
 import PendingPage from "./pages/PendingPage.jsx";
@@ -29,6 +31,22 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <QuestionsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/avatar"
+            element={
+              <ProtectedRoute>
+                <AvatarPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/batalha"
+            element={
+              <ProtectedRoute>
+                <BattlePage />
               </ProtectedRoute>
             }
           />

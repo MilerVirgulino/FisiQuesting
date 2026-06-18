@@ -40,6 +40,7 @@ service cloud.firestore {
         "bestStreak",
         "solvedCount",
         "correctCount",
+        "avatar",
         "updatedAt"
       ]);
     }
