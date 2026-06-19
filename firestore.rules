@@ -87,9 +87,6 @@ service cloud.firestore {
           isSelf(userId)
           && isApproved()
           && onlyStudentStatsChanged()
-          && request.resource.data.role == resource.data.role
-          && request.resource.data.status == resource.data.status
-          && request.resource.data.email == resource.data.email
         );
       allow delete: if isAdmin();
     }
@@ -107,6 +104,15 @@ service cloud.firestore {
     match /weeklyMissions/{missionId} {
       allow read: if isAdmin() || isApproved();
       allow create, update, delete: if isAdmin();
+    }
+
+    match /customAccessoryRequests/{requestId} {
+      allow create: if isApproved()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.status == "pending"
+        && request.resource.data.category == "accessories";
+      allow read: if isAdmin() || (signedIn() && resource.data.userId == request.auth.uid);
+      allow update, delete: if isAdmin();
     }
 
     match /missionAttempts/{attemptId} {

@@ -1,6 +1,8 @@
 import React, { useState } from "react";
 import AvatarPreview from "./AvatarPreview.jsx";
+import PixelAccessoryEditor from "./PixelAccessoryEditor.jsx";
 import { avatarCategories, defaultAvatar, getAvatarItemPrice, getAvatarOptions } from "../data/avatarItems";
+import { ACCESSORY_REQUEST_PRICE, createAccessoryRequest } from "../services/accessoryRequestService";
 import { saveUserAvatar } from "../services/avatarService";
 import { buyAvatarItem, userOwnsAvatarItem } from "../services/avatarShopService";
 
@@ -46,6 +48,10 @@ export default function AvatarEditor({ userId, profile, onSaved }) {
   const [buyingItemId, setBuyingItemId] = useState("");
   const [shopMessage, setShopMessage] = useState("");
   const [previewItem, setPreviewItem] = useState(null);
+  const [requestTitle, setRequestTitle] = useState("");
+  const [requestDescription, setRequestDescription] = useState("");
+  const [requestImage, setRequestImage] = useState(null);
+  const [requestingAccessory, setRequestingAccessory] = useState(false);
   const coins = Number(profile?.coins || 0);
   const equipableAvatar = getEquipableAvatar(avatar, profile);
   const previewAvatar = previewItem
@@ -93,6 +99,41 @@ export default function AvatarEditor({ userId, profile, onSaved }) {
     }
   }
 
+  async function handleAccessoryRequest(event) {
+    event.preventDefault();
+    setShopMessage("");
+
+    if (!requestTitle.trim() || !requestImage) {
+      setShopMessage("Informe um nome e anexe o PNG do acessorio.");
+      return;
+    }
+
+    setRequestingAccessory(true);
+    try {
+      const result = await createAccessoryRequest({
+        userId,
+        profile,
+        title: requestTitle,
+        description: requestDescription,
+        imageDataUrl: requestImage,
+        fileName: `${requestTitle.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_") || "acessorio"}.png`
+      });
+
+      if (result.insufficientCoins) {
+        setShopMessage("Moedas insuficientes para enviar uma criacao.");
+        return;
+      }
+
+      setRequestTitle("");
+      setRequestDescription("");
+      setRequestImage(null);
+      await onSaved?.();
+      setShopMessage("Criacao enviada para avaliacao do professor.");
+    } finally {
+      setRequestingAccessory(false);
+    }
+  }
+
   return (
     <section className="avatar-editor">
       <div className="avatar-editor-preview">
@@ -120,6 +161,13 @@ export default function AvatarEditor({ userId, profile, onSaved }) {
             onClick={() => setActiveTab("shop")}
           >
             Loja
+          </button>
+          <button
+            type="button"
+            className={activeTab === "create" ? "active" : ""}
+            onClick={() => setActiveTab("create")}
+          >
+            Criar
           </button>
         </div>
 
@@ -204,6 +252,41 @@ export default function AvatarEditor({ userId, profile, onSaved }) {
               </section>
             ))}
           </div>
+        )}
+
+        {activeTab === "create" && (
+          <form className="accessory-request-form" onSubmit={handleAccessoryRequest}>
+            <div className="accessory-request-heading">
+              <div>
+                <p className="eyebrow">Oficina</p>
+                <h3>Criar acessorio</h3>
+                <span>Custa {ACCESSORY_REQUEST_PRICE} moedas. Desenhe na camada de cima; o corpo do chibi e so referencia.</span>
+              </div>
+              {requestImage && <img src={requestImage} alt="Previa do acessorio criado" />}
+            </div>
+            <PixelAccessoryEditor onChange={setRequestImage} />
+            <label>
+              Nome do acessorio
+              <input
+                value={requestTitle}
+                onChange={(event) => setRequestTitle(event.target.value)}
+                placeholder="Ex.: Oculos relampago"
+                maxLength={48}
+              />
+            </label>
+            <label>
+              Descricao
+              <textarea
+                value={requestDescription}
+                onChange={(event) => setRequestDescription(event.target.value)}
+                placeholder="Conte a ideia do item."
+                maxLength={240}
+              />
+            </label>
+            <button type="submit" disabled={requestingAccessory || coins < ACCESSORY_REQUEST_PRICE}>
+              {requestingAccessory ? "Enviando..." : `Enviar por ${ACCESSORY_REQUEST_PRICE} moedas`}
+            </button>
+          </form>
         )}
 
         {shopMessage && <p className="muted">{shopMessage}</p>}

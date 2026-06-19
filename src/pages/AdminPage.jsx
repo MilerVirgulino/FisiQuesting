@@ -1,6 +1,10 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Activity, BarChart3, BookOpen, GripVertical, Lock, RadioTower, Target, Trash2, TrendingUp, Trophy, Users } from "lucide-react";
+import { Activity, BarChart3, BookOpen, Download, GripVertical, Lock, Palette, RadioTower, Target, Trash2, TrendingUp, Trophy, Users } from "lucide-react";
 import AvatarPreview from "../components/AvatarPreview.jsx";
+import {
+  listAccessoryRequests,
+  updateAccessoryRequestStatus
+} from "../services/accessoryRequestService";
 import {
   approveUser,
   awardUserReward,
@@ -49,6 +53,7 @@ const tabs = [
   { id: "missions", label: "Missoes", icon: RadioTower },
   { id: "questions", label: "Questoes", icon: BookOpen },
   { id: "classes", label: "Turmas", icon: Users },
+  { id: "creations", label: "Criacoes", icon: Palette },
   { id: "analytics", label: "Graficos", icon: BarChart3 }
 ];
 
@@ -201,6 +206,7 @@ export default function AdminPage() {
   const [questions, setQuestions] = useState([]);
   const [missions, setMissions] = useState([]);
   const [missionAttempts, setMissionAttempts] = useState([]);
+  const [accessoryRequests, setAccessoryRequests] = useState([]);
   const [question, setQuestion] = useState(initialQuestion);
   const [mission, setMission] = useState(initialMission);
   const [loadErrors, setLoadErrors] = useState([]);
@@ -331,9 +337,10 @@ export default function AdminPage() {
       listUsers(),
       listAllQuestions(),
       listAllMissions(),
-      listMissionAttempts()
+      listMissionAttempts(),
+      listAccessoryRequests()
     ]);
-    const labels = ["usuarios", "questoes", "missoes", "tentativas"];
+    const labels = ["usuarios", "questoes", "missoes", "tentativas", "criacoes"];
     const errors = [];
 
     results.forEach((result, index) => {
@@ -346,6 +353,7 @@ export default function AdminPage() {
       if (index === 1) setQuestions(result.value);
       if (index === 2) setMissions(result.value);
       if (index === 3) setMissionAttempts(result.value);
+      if (index === 4) setAccessoryRequests(result.value);
     });
 
     setLoadErrors(errors);
@@ -519,6 +527,18 @@ export default function AdminPage() {
     });
     setClassMessage(`Premio aplicado: +${Number(rewardingUser.xp || 0)} XP e +${Number(rewardingUser.coins || 0)} moedas.`);
     setRewardingUser(null);
+    await refresh();
+  }
+
+  function downloadAccessoryRequest(item) {
+    const link = document.createElement("a");
+    link.href = item.imageDataUrl;
+    link.download = item.fileName || `${item.title || "acessorio"}.png`;
+    link.click();
+  }
+
+  async function handleAccessoryStatus(item, status) {
+    await updateAccessoryRequestStatus(item.id, status);
     await refresh();
   }
 
@@ -1433,6 +1453,53 @@ export default function AdminPage() {
                 </div>
               </article>
             ))}
+          </div>
+        </section>
+      )}
+
+      {activeTab === "creations" && (
+        <section className="admin-section">
+          <div className="section-heading">
+            <div>
+              <p className="eyebrow">Oficina dos alunos</p>
+              <h3>Pedidos de acessorios</h3>
+              <span>Baixe o PNG, avalie e depois adicione manualmente no arquivo de itens ou leve para votacao.</span>
+            </div>
+            <Palette size={26} />
+          </div>
+
+          <div className="accessory-request-grid">
+            {accessoryRequests.map((item) => (
+              <article className={`accessory-request-card status-${item.status || "pending"}`} key={item.id}>
+                <div className="accessory-request-image">
+                  {item.imageDataUrl ? <img src={item.imageDataUrl} alt={item.title || "Acessorio criado"} /> : <span>Sem PNG</span>}
+                </div>
+                <div className="accessory-request-body">
+                  <div>
+                    <span>{item.status || "pending"} · {item.grade || "sem serie"} / {item.className || "sem turma"}</span>
+                    <strong>{item.title || "Sem titulo"}</strong>
+                    <small>{item.userName || item.userEmail || "Aluno"} · {item.pricePaid || 0} moedas pagas</small>
+                  </div>
+                  {item.description && <p>{item.description}</p>}
+                  <div className="row-actions">
+                    <button type="button" className="secondary" onClick={() => downloadAccessoryRequest(item)}>
+                      <Download size={16} />
+                      Baixar PNG
+                    </button>
+                    <button type="button" onClick={() => handleAccessoryStatus(item, "voting")}>
+                      Votacao
+                    </button>
+                    <button type="button" onClick={() => handleAccessoryStatus(item, "approved")}>
+                      Aprovar
+                    </button>
+                    <button type="button" className="danger-button" onClick={() => handleAccessoryStatus(item, "rejected")}>
+                      Rejeitar
+                    </button>
+                  </div>
+                </div>
+              </article>
+            ))}
+            {!accessoryRequests.length && <p className="muted">Nenhuma criacao enviada ainda.</p>}
           </div>
         </section>
       )}
