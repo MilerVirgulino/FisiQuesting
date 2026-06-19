@@ -22,11 +22,39 @@ service cloud.firestore {
       return signedIn() && userDoc().data.role == "admin" && userDoc().data.status == "approved";
     }
 
+    function isGradeOne(value) {
+      return value in ["1", "1 ano", "1º ano", "1Âº ano", "1o ano"];
+    }
+
+    function isGradeTwo(value) {
+      return value in ["2", "2 ano", "2º ano", "2Âº ano", "2o ano"];
+    }
+
+    function isGradeThree(value) {
+      return value in ["3", "3 ano", "3º ano", "3Âº ano", "3o ano"];
+    }
+
+    function sameGrade(left, right) {
+      return left == right
+        || (isGradeOne(left) && isGradeOne(right))
+        || (isGradeTwo(left) && isGradeTwo(right))
+        || (isGradeThree(left) && isGradeThree(right));
+    }
+
+    function sameClass(left, right) {
+      return left == right
+        || (left in ["A", "a"] && right in ["A", "a"])
+        || (left in ["B", "b"] && right in ["B", "b"])
+        || (left in ["C", "c"] && right in ["C", "c"])
+        || (left in ["D", "d"] && right in ["D", "d"])
+        || (left in ["E", "e"] && right in ["E", "e"]);
+    }
+
     function isMissionForUser() {
       return isApproved()
         && resource.data.status == "open"
-        && resource.data.targetGrade == userDoc().data.grade
-        && resource.data.targetClass == userDoc().data.className;
+        && sameGrade(resource.data.targetGrade, userDoc().data.grade)
+        && sameClass(resource.data.targetClass, userDoc().data.className);
     }
 
     function isOwnProgressId(progressId) {
@@ -77,19 +105,16 @@ service cloud.firestore {
     }
 
     match /weeklyMissions/{missionId} {
-      allow read: if isAdmin() || isMissionForUser();
+      allow read: if isAdmin() || isApproved();
       allow create, update, delete: if isAdmin();
     }
 
     match /missionAttempts/{attemptId} {
-      allow read: if isAdmin()
-        || (
-          signedIn()
-          && (
-            attemptId.matches(request.auth.uid + "_.*")
-            || resource.data.userId == request.auth.uid
-          )
-        );
+      allow get: if isAdmin()
+        || (signedIn() && attemptId.matches(request.auth.uid + "_.*"))
+        || (signedIn() && resource.data.userId == request.auth.uid);
+      allow list: if isAdmin()
+        || (signedIn() && resource.data.userId == request.auth.uid);
       allow create: if isApproved()
         && attemptId.matches(request.auth.uid + "_.*")
         && request.resource.data.userId == request.auth.uid;

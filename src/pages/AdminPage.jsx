@@ -1,7 +1,18 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { BarChart3, BookOpen, GripVertical, Lock, RadioTower, Trash2, Users } from "lucide-react";
-import { approveUser, listUsers, rejectUser, updateUserClass } from "../services/adminService";
-import { createMission, listAllMissions, updateMission } from "../services/missionService";
+import { Activity, BarChart3, BookOpen, GripVertical, Lock, RadioTower, Target, Trash2, TrendingUp, Trophy, Users } from "lucide-react";
+import AvatarPreview from "../components/AvatarPreview.jsx";
+import {
+  approveUser,
+  awardUserReward,
+  deleteUserProfile,
+  listMissionAttempts,
+  listUsers,
+  rejectUser,
+  sendUserPasswordReset,
+  updateUserClass,
+  updateUserProfile
+} from "../services/adminService";
+import { createMission, deleteMission, listAllMissions, updateMission } from "../services/missionService";
 import { createQuestion, deleteQuestion, listAllQuestions, updateQuestion } from "../services/questionService";
 
 const areas = ["Mecanica", "Termologia", "Optica", "Eletricidade", "Ondulatoria", "Fisica Moderna"];
@@ -28,6 +39,7 @@ const initialMission = {
   questionIds: [],
   rewardXp: 50,
   rewardCoins: 100,
+  targetMinutes: 10,
   status: "open",
   startsAt: "",
   endsAt: ""
@@ -43,23 +55,144 @@ const tabs = [
 function buildClassStats(users) {
   const groups = new Map();
   users
-    .filter((user) => user.role !== "admin")
+    .filter((user) => user.role !== "admin" && user.status === "approved")
     .forEach((user) => {
-      const key = `${user.grade || "Sem serie"} - ${user.className || "Sem turma"}`;
-      const current = groups.get(key) || { key, students: 0, solved: 0, correct: 0, xp: 0 };
+      const grade = user.grade || "Sem serie";
+      const className = user.className || "Sem turma";
+      const key = `${grade} - ${className}`;
+      const current = groups.get(key) || {
+        key,
+        grade,
+        className,
+        students: 0,
+        approvedStudents: 0,
+        solved: 0,
+        correct: 0,
+        xp: 0,
+        coins: 0,
+        bestStreak: 0,
+        activeStudents: 0
+      };
+      const solved = Number(user.solvedCount || 0);
+      const correct = Number(user.correctCount || 0);
 
       current.students += 1;
-      current.solved += user.solvedCount || 0;
-      current.correct += user.correctCount || 0;
-      current.xp += user.totalXp || 0;
+      current.approvedStudents += user.status === "approved" ? 1 : 0;
+      current.solved += solved;
+      current.correct += correct;
+      current.xp += Number(user.totalXp || 0);
+      current.coins += Number(user.coins || 0);
+      current.bestStreak = Math.max(current.bestStreak, Number(user.bestStreak || 0));
+      current.activeStudents += solved > 0 ? 1 : 0;
       groups.set(key, current);
     });
 
   return [...groups.values()].map((group) => ({
     ...group,
     accuracy: group.solved ? Math.round((group.correct / group.solved) * 100) : 0,
-    avgXp: group.students ? Math.round(group.xp / group.students) : 0
-  }));
+    avgXp: group.students ? Math.round(group.xp / group.students) : 0,
+    avgSolved: group.students ? Number((group.solved / group.students).toFixed(1)) : 0,
+    avgCoins: group.students ? Math.round(group.coins / group.students) : 0,
+    participation: group.students ? Math.round((group.activeStudents / group.students) * 100) : 0
+  })).sort((a, b) => a.grade.localeCompare(b.grade) || a.className.localeCompare(b.className));
+}
+
+function buildAggregateStats(groups) {
+  const totals = groups.reduce(
+    (current, group) => ({
+      classes: current.classes + 1,
+      students: current.students + group.students,
+      approvedStudents: current.approvedStudents + group.approvedStudents,
+      solved: current.solved + group.solved,
+      correct: current.correct + group.correct,
+      xp: current.xp + group.xp,
+      activeStudents: current.activeStudents + group.activeStudents
+    }),
+    { classes: 0, students: 0, approvedStudents: 0, solved: 0, correct: 0, xp: 0, activeStudents: 0 }
+  );
+
+  return {
+    ...totals,
+    accuracy: totals.solved ? Math.round((totals.correct / totals.solved) * 100) : 0,
+    avgXp: totals.students ? Math.round(totals.xp / totals.students) : 0,
+    avgSolved: totals.students ? Number((totals.solved / totals.students).toFixed(1)) : 0,
+    participation: totals.students ? Math.round((totals.activeStudents / totals.students) * 100) : 0
+  };
+}
+
+function timestampToMillis(value) {
+  if (!value) return 0;
+  if (typeof value.toMillis === "function") return value.toMillis();
+  if (typeof value.seconds === "number") return value.seconds * 1000;
+  const parsed = new Date(value).getTime();
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function getMissionTime(mission) {
+  const startTime = timestampToMillis(mission.startsAt);
+  const createdTime = timestampToMillis(mission.createdAt);
+  const parsedStart = new Date(mission.startsAt || "").getTime();
+
+  return startTime || (Number.isFinite(parsedStart) ? parsedStart : 0) || createdTime;
+}
+
+function formatMissionPeriod(mission) {
+  if (mission.startsAt && mission.endsAt) return `${mission.startsAt} a ${mission.endsAt}`;
+  if (mission.startsAt) return `Inicio ${mission.startsAt}`;
+  return "Periodo nao definido";
+}
+
+function buildMissionEvolution({ attempts, missions, users, filters }) {
+  const usersById = new Map(users.map((user) => [user.id, user]));
+  const missionsById = new Map(missions.map((mission) => [mission.id, mission]));
+  const groups = new Map();
+
+  attempts.forEach((attempt) => {
+    if (!attempt.completed) return;
+
+    const mission = missionsById.get(attempt.missionId);
+    const user = usersById.get(attempt.userId);
+    const grade = mission?.targetGrade || user?.grade || "Sem serie";
+    const className = mission?.targetClass || user?.className || "Sem turma";
+
+    if (filters.grade && grade !== filters.grade) return;
+    if (filters.className && className !== filters.className) return;
+
+    const key = attempt.missionId || attempt.id;
+    const current = groups.get(key) || {
+      key,
+      missionId: key,
+      title: mission?.title || "Missao sem titulo",
+      period: mission ? formatMissionPeriod(mission) : "Periodo nao definido",
+      grade,
+      className,
+      time: mission ? getMissionTime(mission) : timestampToMillis(attempt.submittedAt),
+      attempts: 0,
+      solved: 0,
+      correct: 0,
+      xpEarned: 0,
+      coinsEarned: 0,
+      participants: new Set()
+    };
+
+    current.attempts += 1;
+    current.solved += Number(attempt.solved || 0);
+    current.correct += Number(attempt.correct || 0);
+    current.xpEarned += Number(attempt.xpEarned || 0);
+    current.coinsEarned += Number(attempt.coinsEarned || 0);
+    current.participants.add(attempt.userId);
+    groups.set(key, current);
+  });
+
+  return [...groups.values()]
+    .map((group) => ({
+      ...group,
+      participants: group.participants.size,
+      accuracy: group.solved ? Math.round((group.correct / group.solved) * 100) : 0,
+      avgXp: group.attempts ? Math.round(group.xpEarned / group.attempts) : 0,
+      avgCoins: group.attempts ? Math.round(group.coinsEarned / group.attempts) : 0
+    }))
+    .sort((a, b) => a.time - b.time);
 }
 
 export default function AdminPage() {
@@ -67,16 +200,116 @@ export default function AdminPage() {
   const [users, setUsers] = useState([]);
   const [questions, setQuestions] = useState([]);
   const [missions, setMissions] = useState([]);
+  const [missionAttempts, setMissionAttempts] = useState([]);
   const [question, setQuestion] = useState(initialQuestion);
   const [mission, setMission] = useState(initialMission);
   const [loadErrors, setLoadErrors] = useState([]);
   const [draggingQuestionId, setDraggingQuestionId] = useState("");
   const [dropActive, setDropActive] = useState(false);
   const [questionFilters, setQuestionFilters] = useState({ area: "", difficulty: "" });
+  const [analyticsFilters, setAnalyticsFilters] = useState({ grade: "", className: "" });
+  const [classFilters, setClassFilters] = useState({ grade: "", className: "" });
+  const [studentSearch, setStudentSearch] = useState("");
+  const [editingUser, setEditingUser] = useState(null);
+  const [rewardingUser, setRewardingUser] = useState(null);
+  const [classMessage, setClassMessage] = useState("");
   const [editingQuestion, setEditingQuestion] = useState(null);
+  const [editingMission, setEditingMission] = useState(null);
 
   const classStats = useMemo(() => buildClassStats(users), [users]);
-  const maxSolved = Math.max(1, ...classStats.map((item) => item.solved));
+  const pendingStudents = useMemo(
+    () => users.filter((user) => user.role !== "admin" && (user.status || "pending") === "pending"),
+    [users]
+  );
+  const isPendingClassView = classFilters.grade === "__pending__";
+  const pendingClassStats = useMemo(
+    () => ({
+      key: "Alunos pendentes",
+      grade: "__pending__",
+      className: "",
+      students: pendingStudents.length,
+      approvedStudents: 0,
+      solved: pendingStudents.reduce((total, user) => total + Number(user.solvedCount || 0), 0),
+      correct: pendingStudents.reduce((total, user) => total + Number(user.correctCount || 0), 0),
+      accuracy: 0,
+      participation: 0,
+      isPending: true
+    }),
+    [pendingStudents]
+  );
+  const selectedClassStats = useMemo(
+    () => {
+      if (isPendingClassView) return pendingClassStats;
+      return classStats.find((item) => item.grade === classFilters.grade && item.className === classFilters.className) || null;
+    },
+    [classStats, classFilters, isPendingClassView, pendingClassStats]
+  );
+  const classStudents = useMemo(
+    () =>
+      users
+        .filter((user) => user.role !== "admin")
+        .filter((user) => {
+          if (isPendingClassView) return (user.status || "pending") === "pending";
+          return user.status === "approved" && (!classFilters.grade || user.grade === classFilters.grade);
+        })
+        .filter((user) => isPendingClassView || !classFilters.className || user.className === classFilters.className)
+        .filter((user) => {
+          const search = studentSearch.trim().toLowerCase();
+          if (!search) return true;
+          return [user.name, user.email, user.grade, user.className]
+            .filter(Boolean)
+            .some((value) => String(value).toLowerCase().includes(search));
+        })
+        .sort((a, b) => String(a.name || a.email).localeCompare(String(b.name || b.email))),
+    [users, classFilters, studentSearch, isPendingClassView]
+  );
+  const classMissions = useMemo(
+    () => {
+      if (isPendingClassView) return [];
+      return missions
+        .filter((item) => !classFilters.grade || item.targetGrade === classFilters.grade)
+        .filter((item) => !classFilters.className || item.targetClass === classFilters.className)
+        .map((item) => {
+          const attempts = missionAttempts.filter((attempt) => attempt.missionId === item.id);
+          const completedAttempts = attempts.filter((attempt) => attempt.completed);
+          const solved = completedAttempts.reduce((total, attempt) => total + Number(attempt.solved || 0), 0);
+          const correct = completedAttempts.reduce((total, attempt) => total + Number(attempt.correct || 0), 0);
+          return {
+            ...item,
+            attempts: completedAttempts.length,
+            accuracy: solved ? Math.round((correct / solved) * 100) : 0
+          };
+        });
+    },
+    [missions, missionAttempts, classFilters, isPendingClassView]
+  );
+  const openClassMissions = useMemo(
+    () => classMissions.filter((item) => item.status === "open"),
+    [classMissions]
+  );
+  const closedClassMissions = useMemo(
+    () => classMissions.filter((item) => item.status !== "open"),
+    [classMissions]
+  );
+  const filteredClassStats = useMemo(
+    () =>
+      classStats
+        .filter((item) => !analyticsFilters.grade || item.grade === analyticsFilters.grade)
+        .filter((item) => !analyticsFilters.className || item.className === analyticsFilters.className),
+    [classStats, analyticsFilters]
+  );
+  const analyticsSummary = useMemo(() => buildAggregateStats(filteredClassStats), [filteredClassStats]);
+  const selectedClass = filteredClassStats.length === 1 ? filteredClassStats[0] : null;
+  const topClasses = useMemo(
+    () => filteredClassStats.slice().sort((a, b) => b.accuracy - a.accuracy || b.solved - a.solved).slice(0, 5),
+    [filteredClassStats]
+  );
+  const maxSolved = Math.max(1, ...filteredClassStats.map((item) => item.solved));
+  const missionEvolution = useMemo(
+    () => buildMissionEvolution({ attempts: missionAttempts, missions, users, filters: analyticsFilters }),
+    [missionAttempts, missions, users, analyticsFilters]
+  );
+  const maxEvolutionAttempts = Math.max(1, ...missionEvolution.map((item) => item.attempts));
   const filteredQuestions = useMemo(
     () =>
       questions
@@ -97,9 +330,10 @@ export default function AdminPage() {
     const results = await Promise.allSettled([
       listUsers(),
       listAllQuestions(),
-      listAllMissions()
+      listAllMissions(),
+      listMissionAttempts()
     ]);
-    const labels = ["usuarios", "questoes", "missoes"];
+    const labels = ["usuarios", "questoes", "missoes", "tentativas"];
     const errors = [];
 
     results.forEach((result, index) => {
@@ -111,6 +345,7 @@ export default function AdminPage() {
       if (index === 0) setUsers(result.value);
       if (index === 1) setQuestions(result.value);
       if (index === 2) setMissions(result.value);
+      if (index === 3) setMissionAttempts(result.value);
     });
 
     setLoadErrors(errors);
@@ -136,6 +371,40 @@ export default function AdminPage() {
     event.preventDefault();
     await createMission(mission);
     setMission(initialMission);
+    await refresh();
+  }
+
+  function startEditMission(item) {
+    setEditingMission({
+      id: item.id,
+      title: item.title || "",
+      description: item.description || "",
+      targetGrade: gradeOptions.includes(item.targetGrade) ? item.targetGrade : "1 ano",
+      targetClass: classOptions.includes(item.targetClass) ? item.targetClass : "A",
+      rewardXp: Number(item.rewardXp || 0),
+      rewardCoins: Number(item.rewardCoins || 0),
+      targetMinutes: Number(item.targetMinutes || 0),
+      status: item.status || "open",
+      startsAt: item.startsAt || "",
+      endsAt: item.endsAt || ""
+    });
+  }
+
+  async function handleSaveMissionEdit(event) {
+    event.preventDefault();
+    if (!editingMission) return;
+
+    const { id, ...missionPatch } = editingMission;
+    await updateMission(id, missionPatch);
+    setEditingMission(null);
+    await refresh();
+  }
+
+  async function handleDeleteMission(missionId) {
+    const shouldDelete = window.confirm("Excluir esta missao? As tentativas ja enviadas pelos alunos nao serao apagadas.");
+    if (!shouldDelete) return;
+
+    await deleteMission(missionId);
     await refresh();
   }
 
@@ -200,6 +469,56 @@ export default function AdminPage() {
       active: editingQuestion.active
     });
     setEditingQuestion(null);
+    await refresh();
+  }
+
+  function startEditUser(user) {
+    setClassMessage("");
+    setEditingUser({
+      id: user.id,
+      name: user.name || "",
+      email: user.email || "",
+      grade: gradeOptions.includes(user.grade) ? user.grade : "1 ano",
+      className: classOptions.includes(user.className) ? user.className : "A",
+      status: user.status || "pending"
+    });
+  }
+
+  async function handleSaveUserEdit(event) {
+    event.preventDefault();
+    if (!editingUser) return;
+
+    await updateUserProfile(editingUser.id, editingUser);
+    setEditingUser(null);
+    setClassMessage("Aluno atualizado.");
+    await refresh();
+  }
+
+  async function handlePasswordReset(user) {
+    setClassMessage("");
+    await sendUserPasswordReset(user.email);
+    setClassMessage(`E-mail de redefinicao enviado para ${user.email}.`);
+  }
+
+  async function handleDeleteUser(user) {
+    const shouldDelete = window.confirm(`Remover o perfil de ${user.name || user.email}? A conta de login no Firebase Auth precisa ser removida depois via Admin SDK/console.`);
+    if (!shouldDelete) return;
+
+    await deleteUserProfile(user.id);
+    setClassMessage("Perfil removido do Firestore. A conta de autenticacao ainda deve ser removida no Firebase Auth.");
+    await refresh();
+  }
+
+  async function handleAwardUser(event) {
+    event.preventDefault();
+    if (!rewardingUser) return;
+
+    await awardUserReward(rewardingUser.id, {
+      xp: rewardingUser.xp,
+      coins: rewardingUser.coins
+    });
+    setClassMessage(`Premio aplicado: +${Number(rewardingUser.xp || 0)} XP e +${Number(rewardingUser.coins || 0)} moedas.`);
+    setRewardingUser(null);
     await refresh();
   }
 
@@ -304,11 +623,36 @@ export default function AdminPage() {
                   />
                 </label>
                 <label>
+                  Tempo estimado (min)
+                  <input
+                    type="number"
+                    min="0"
+                    value={mission.targetMinutes}
+                    onChange={(event) => setMission({ ...mission, targetMinutes: event.target.value })}
+                  />
+                </label>
+                <label>
                   Status
                   <select value={mission.status} onChange={(event) => setMission({ ...mission, status: event.target.value })}>
                     <option value="open">Aberta</option>
                     <option value="closed">Fechada</option>
                   </select>
+                </label>
+                <label>
+                  Inicio
+                  <input
+                    type="date"
+                    value={mission.startsAt}
+                    onChange={(event) => setMission({ ...mission, startsAt: event.target.value })}
+                  />
+                </label>
+                <label>
+                  Finalizacao
+                  <input
+                    type="date"
+                    value={mission.endsAt}
+                    onChange={(event) => setMission({ ...mission, endsAt: event.target.value })}
+                  />
                 </label>
               </div>
 
@@ -413,6 +757,102 @@ export default function AdminPage() {
 
           <section className="admin-section">
             <h3>Missoes cadastradas</h3>
+            <div className="admin-mission-grid">
+              {missions.map((item) => (
+                <article className="mission-card tcg-mission-card admin-mission-card" key={`${item.id}-card`}>
+                  <div className="mission-orbit" />
+                  {editingMission?.id === item.id ? (
+                    <form className="mission-edit-form" onSubmit={handleSaveMissionEdit}>
+                      <label>
+                        Titulo
+                        <input value={editingMission.title} onChange={(event) => setEditingMission({ ...editingMission, title: event.target.value })} required />
+                      </label>
+                      <label>
+                        Descricao
+                        <input value={editingMission.description} onChange={(event) => setEditingMission({ ...editingMission, description: event.target.value })} required />
+                      </label>
+                      <div className="form-grid">
+                        <label>
+                          Serie
+                          <select value={editingMission.targetGrade} onChange={(event) => setEditingMission({ ...editingMission, targetGrade: event.target.value })}>
+                            {gradeOptions.map((grade) => <option value={grade} key={grade}>{grade}</option>)}
+                          </select>
+                        </label>
+                        <label>
+                          Turma
+                          <select value={editingMission.targetClass} onChange={(event) => setEditingMission({ ...editingMission, targetClass: event.target.value })}>
+                            {classOptions.map((className) => <option value={className} key={className}>{className}</option>)}
+                          </select>
+                        </label>
+                        <label>
+                          XP bonus
+                          <input type="number" min="0" value={editingMission.rewardXp} onChange={(event) => setEditingMission({ ...editingMission, rewardXp: event.target.value })} />
+                        </label>
+                        <label>
+                          Moedas
+                          <input type="number" min="0" value={editingMission.rewardCoins} onChange={(event) => setEditingMission({ ...editingMission, rewardCoins: event.target.value })} />
+                        </label>
+                        <label>
+                          Tempo estimado (min)
+                          <input type="number" min="0" value={editingMission.targetMinutes} onChange={(event) => setEditingMission({ ...editingMission, targetMinutes: event.target.value })} />
+                        </label>
+                        <label>
+                          Inicio
+                          <input type="date" value={editingMission.startsAt} onChange={(event) => setEditingMission({ ...editingMission, startsAt: event.target.value })} />
+                        </label>
+                        <label>
+                          Finalizacao
+                          <input type="date" value={editingMission.endsAt} onChange={(event) => setEditingMission({ ...editingMission, endsAt: event.target.value })} />
+                        </label>
+                        <label>
+                          Status
+                          <select value={editingMission.status} onChange={(event) => setEditingMission({ ...editingMission, status: event.target.value })}>
+                            <option value="open">Aberta</option>
+                            <option value="closed">Fechada</option>
+                          </select>
+                        </label>
+                      </div>
+                      <div className="row-actions">
+                        <button type="submit">Salvar missao</button>
+                        <button type="button" className="secondary" onClick={() => setEditingMission(null)}>
+                          Cancelar
+                        </button>
+                      </div>
+                    </form>
+                  ) : (
+                    <>
+                      <p className="eyebrow">{item.targetGrade} · {item.targetClass}</p>
+                      <h3>{item.title}</h3>
+                      <p>{item.description}</p>
+                      <div className="mission-stats">
+                        <span><Target size={16} /> {item.questionIds?.length || 0} fases</span>
+                        <span>{item.status === "open" ? "Aberta" : "Fechada"}</span>
+                        <span>{formatMissionPeriod(item)}</span>
+                        <span>{item.targetMinutes || 0} min estimados</span>
+                        <strong>+{item.rewardXp || 0} XP</strong>
+                        <strong>+{item.rewardCoins || 0} moedas</strong>
+                      </div>
+                      <div className="row-actions">
+                        <button type="button" className="secondary" onClick={() => startEditMission(item)}>
+                          Editar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => updateMission(item.id, { status: item.status === "open" ? "closed" : "open" }).then(refresh)}
+                        >
+                          {item.status === "open" ? "Fechar" : "Abrir"}
+                        </button>
+                        <button type="button" className="danger-button" onClick={() => handleDeleteMission(item.id)}>
+                          Excluir
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </article>
+              ))}
+            </div>
+
+            {false && (
             <div className="table-list">
               {missions.map((item) => (
                 <article className="table-row" key={item.id}>
@@ -431,6 +871,7 @@ export default function AdminPage() {
                 </article>
               ))}
             </div>
+            )}
           </section>
         </>
       )}
@@ -643,6 +1084,303 @@ export default function AdminPage() {
       )}
 
       {activeTab === "classes" && (
+        <section className="admin-section class-management">
+          <div className="section-heading">
+            <div>
+              <p className="eyebrow">Turmas</p>
+              <h3>Organizacao por turma</h3>
+            </div>
+            <Users size={26} />
+          </div>
+
+          <div className="class-filter-cards class-management-cards">
+            <button
+              type="button"
+              className={`pending-class-card ${isPendingClassView ? "active" : ""}`}
+              onClick={() => {
+                setClassFilters({ grade: "__pending__", className: "" });
+                setEditingUser(null);
+                setRewardingUser(null);
+                setStudentSearch("");
+                setClassMessage("");
+              }}
+            >
+              <strong>Alunos pendentes</strong>
+              <span>{pendingStudents.length} aguardando aprovacao e organizacao de turma</span>
+            </button>
+            {classStats.map((group) => {
+              const active = classFilters.grade === group.grade && classFilters.className === group.className;
+              return (
+                <button
+                  type="button"
+                  className={active ? "active" : ""}
+                  key={`${group.key}-manage`}
+                  onClick={() => {
+                    setClassFilters({ grade: group.grade, className: group.className });
+                    setEditingUser(null);
+                    setRewardingUser(null);
+                    setStudentSearch("");
+                    setClassMessage("");
+                  }}
+                >
+                  <strong>{group.key}</strong>
+                  <span>{group.students} alunos · {group.approvedStudents} aprovados · {group.accuracy}% acerto</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {!selectedClassStats && (
+            <p className="muted">Selecione uma turma ou o card de pendentes para gerenciar os alunos.</p>
+          )}
+
+          {selectedClassStats && (
+            <div className="class-detail-panel">
+              <div className="analytics-focus">
+                <div>
+                  <p className="eyebrow">Turma selecionada</p>
+                  <h4>{selectedClassStats.key}</h4>
+                  {selectedClassStats.isPending ? (
+                    <span>{selectedClassStats.students} alunos aguardando aprovacao. Edite serie/turma antes de liberar o acesso.</span>
+                  ) : (
+                  <span>
+                    {selectedClassStats.students} alunos · {selectedClassStats.solved} respostas · {selectedClassStats.accuracy}% acerto · {selectedClassStats.participation}% participacao
+                  </span>
+                  )}
+                </div>
+                <button type="button" className="secondary" onClick={() => setClassFilters({ grade: "", className: "" })}>
+                  Fechar
+                </button>
+              </div>
+
+              <div className="class-detail-grid">
+                <section className="analytics-panel">
+                  <div className="section-heading">
+                    <div>
+                      <p className="eyebrow">Alunos</p>
+                      <h3>{classStudents.length} cadastrados</h3>
+                    </div>
+                  </div>
+
+                  <div className="student-search-row">
+                    <label>
+                      Localizar aluno
+                      <input
+                        value={studentSearch}
+                        onChange={(event) => setStudentSearch(event.target.value)}
+                        placeholder="Buscar por nome, e-mail, serie ou turma"
+                      />
+                    </label>
+                    {studentSearch && (
+                      <button type="button" className="secondary" onClick={() => setStudentSearch("")}>
+                        Limpar
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="student-management-list">
+                    {classStudents.map((user) => {
+                      const solved = Number(user.solvedCount || 0);
+                      const correct = Number(user.correctCount || 0);
+                      const accuracy = solved ? Math.round((correct / solved) * 100) : 0;
+                      const xp = Number(user.totalXp || 0);
+                      const cardRank = xp >= 500 ? "Raro" : xp >= 200 ? "Incomum" : "Comum";
+                      return (
+                      <article className={`student-management-card tcg-student-card status-${user.status || "pending"}`} key={user.id}>
+                        {editingUser?.id === user.id ? (
+                          <form className="student-edit-form" onSubmit={handleSaveUserEdit}>
+                            <label>
+                              Nome
+                              <input value={editingUser.name} onChange={(event) => setEditingUser({ ...editingUser, name: event.target.value })} />
+                            </label>
+                            <label>
+                              E-mail cadastral
+                              <input type="email" value={editingUser.email} onChange={(event) => setEditingUser({ ...editingUser, email: event.target.value })} />
+                            </label>
+                            <div className="class-editor">
+                              <label>
+                                Serie
+                                <select value={editingUser.grade} onChange={(event) => setEditingUser({ ...editingUser, grade: event.target.value })}>
+                                  {gradeOptions.map((grade) => <option value={grade} key={grade}>{grade}</option>)}
+                                </select>
+                              </label>
+                              <label>
+                                Turma
+                                <select value={editingUser.className} onChange={(event) => setEditingUser({ ...editingUser, className: event.target.value })}>
+                                  {classOptions.map((className) => <option value={className} key={className}>{className}</option>)}
+                                </select>
+                              </label>
+                            </div>
+                            <label>
+                              Status
+                              <select value={editingUser.status} onChange={(event) => setEditingUser({ ...editingUser, status: event.target.value })}>
+                                <option value="pending">Pendente</option>
+                                <option value="approved">Aprovado</option>
+                                <option value="rejected">Rejeitado</option>
+                              </select>
+                            </label>
+                            <p className="muted">Alterar este e-mail atualiza o cadastro no Firestore. O e-mail de login do Firebase Auth precisa de Admin SDK/Cloud Function.</p>
+                            <div className="row-actions">
+                              <button type="submit">Salvar aluno</button>
+                              <button type="button" className="secondary" onClick={() => setEditingUser(null)}>
+                                Cancelar
+                              </button>
+                            </div>
+                          </form>
+                        ) : (
+                          <>
+                            <div className="tcg-card-top">
+                              <div>
+                                <span>{cardRank}</span>
+                                <strong>{user.name || user.email}</strong>
+                              </div>
+                              <b>{user.status || "pending"}</b>
+                            </div>
+                            <div className="tcg-card-body">
+                              <div className="tcg-avatar-mark">
+                                <AvatarPreview avatar={user.avatar} size={56} />
+                              </div>
+                              <div className="tcg-student-meta">
+                                <span>{user.email}</span>
+                                <small>{user.grade || "sem serie"} / {user.className || "sem turma"}</small>
+                              </div>
+                            </div>
+                            <div className="tcg-stat-grid">
+                              <div>
+                                <span>XP</span>
+                                <strong>{xp}</strong>
+                              </div>
+                              <div>
+                                <span>Acerto</span>
+                                <strong>{accuracy}%</strong>
+                              </div>
+                              <div>
+                                <span>Resp.</span>
+                                <strong>{solved}</strong>
+                              </div>
+                              <div>
+                                <span>Streak</span>
+                                <strong>{user.bestStreak || 0}</strong>
+                              </div>
+                            </div>
+                            <div className="tcg-progress-lines">
+                              <label>
+                                Precisao
+                                <span><i style={{ width: `${Math.max(4, accuracy)}%` }} /></span>
+                              </label>
+                              <label>
+                                Participacao
+                                <span><i style={{ width: `${Math.min(100, Math.max(4, solved * 4))}%` }} /></span>
+                              </label>
+                            </div>
+                            <div className="row-actions">
+                              <button type="button" className="secondary" onClick={() => startEditUser(user)}>
+                                Editar
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setRewardingUser({ id: user.id, name: user.name || user.email, xp: 10, coins: 10 })}
+                              >
+                                Premiar
+                              </button>
+                              <button type="button" onClick={() => approveUser(user.id, {
+                                grade: gradeOptions.includes(user.grade) ? user.grade : selectedClassStats.isPending ? "1 ano" : selectedClassStats.grade,
+                                className: classOptions.includes(user.className) ? user.className : selectedClassStats.isPending ? "A" : selectedClassStats.className
+                              }).then(refresh)}>
+                                Aprovar
+                              </button>
+                              <button type="button" className="secondary" onClick={() => handlePasswordReset(user)}>
+                                Redefinir senha
+                              </button>
+                              <button type="button" className="danger-button" onClick={() => handleDeleteUser(user)}>
+                                Excluir
+                              </button>
+                            </div>
+                            {rewardingUser?.id === user.id && (
+                              <form className="student-reward-form" onSubmit={handleAwardUser}>
+                                <div>
+                                  <label>
+                                    XP
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      value={rewardingUser.xp}
+                                      onChange={(event) => setRewardingUser({ ...rewardingUser, xp: event.target.value })}
+                                    />
+                                  </label>
+                                  <label>
+                                    Moedas
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      value={rewardingUser.coins}
+                                      onChange={(event) => setRewardingUser({ ...rewardingUser, coins: event.target.value })}
+                                    />
+                                  </label>
+                                </div>
+                                <small>Use para atividade offline, questao no quadro ou participacao em sala.</small>
+                                <div className="row-actions">
+                                  <button type="submit">Aplicar premio</button>
+                                  <button type="button" className="secondary" onClick={() => setRewardingUser(null)}>
+                                    Cancelar
+                                  </button>
+                                </div>
+                              </form>
+                            )}
+                          </>
+                        )}
+                      </article>
+                      );
+                    })}
+                  </div>
+                </section>
+
+                {!selectedClassStats.isPending && (
+                <section className="analytics-panel">
+                  <div className="section-heading">
+                    <div>
+                      <p className="eyebrow">Missoes</p>
+                      <h3>Abertas</h3>
+                    </div>
+                  </div>
+                  <div className="class-mission-list">
+                    {openClassMissions.map((item) => (
+                      <article key={item.id}>
+                        <strong>{item.title}</strong>
+                        <span>{item.questionIds?.length || 0} questoes · {item.rewardXp || 0} XP · {item.rewardCoins || 0} moedas</span>
+                        <small>{item.attempts} conclusoes · {item.accuracy}% acerto</small>
+                      </article>
+                    ))}
+                    {!openClassMissions.length && <p className="muted">Nenhuma missao aberta para esta turma.</p>}
+                  </div>
+
+                  <div className="section-heading">
+                    <div>
+                      <p className="eyebrow">Historico</p>
+                      <h3>Fechadas ou concluidas</h3>
+                    </div>
+                  </div>
+                  <div className="class-mission-list">
+                    {closedClassMissions.map((item) => (
+                      <article key={item.id}>
+                        <strong>{item.title}</strong>
+                        <span>{item.status} · {item.attempts} conclusoes · {item.accuracy}% acerto</span>
+                        <small>{formatMissionPeriod(item)}</small>
+                      </article>
+                    ))}
+                    {!closedClassMissions.length && <p className="muted">Nenhuma missao fechada ainda.</p>}
+                  </div>
+                </section>
+                )}
+              </div>
+
+              {classMessage && <p className="muted">{classMessage}</p>}
+            </div>
+          )}
+        </section>
+      )}
+
+      {false && activeTab === "classes" && (
         <section className="admin-section">
           <div className="section-heading">
             <div>
@@ -700,6 +1438,278 @@ export default function AdminPage() {
       )}
 
       {activeTab === "analytics" && (
+        <section className="admin-section analytics-dashboard">
+          <div className="section-heading">
+            <div>
+              <p className="eyebrow">Analytics</p>
+              <h3>Desempenho pedagogico por turma</h3>
+            </div>
+            <BarChart3 size={26} />
+          </div>
+
+          <div className="analytics-filters">
+            <label>
+              Serie
+              <select
+                value={analyticsFilters.grade}
+                onChange={(event) => setAnalyticsFilters((current) => ({ ...current, grade: event.target.value }))}
+              >
+                <option value="">Todas</option>
+                {gradeOptions.map((grade) => <option value={grade} key={grade}>{grade}</option>)}
+              </select>
+            </label>
+            <label>
+              Turma
+              <select
+                value={analyticsFilters.className}
+                onChange={(event) => setAnalyticsFilters((current) => ({ ...current, className: event.target.value }))}
+              >
+                <option value="">Todas</option>
+                {classOptions.map((className) => <option value={className} key={className}>{className}</option>)}
+              </select>
+            </label>
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => setAnalyticsFilters({ grade: "", className: "" })}
+            >
+              Limpar filtros
+            </button>
+          </div>
+
+          <div className="class-filter-cards">
+            {classStats.map((group) => {
+              const active = analyticsFilters.grade === group.grade && analyticsFilters.className === group.className;
+              return (
+                <button
+                  type="button"
+                  className={active ? "active" : ""}
+                  key={`${group.key}-filter`}
+                  onClick={() => setAnalyticsFilters({ grade: group.grade, className: group.className })}
+                >
+                  <strong>{group.key}</strong>
+                  <span>{group.students} alunos · {group.accuracy}% acerto · {group.solved} respostas</span>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="analytics-kpi-grid">
+            <article>
+              <Users size={22} />
+              <span>Alunos</span>
+              <strong>{analyticsSummary.students}</strong>
+              <small>{analyticsSummary.approvedStudents} aprovados em {analyticsSummary.classes} turmas</small>
+            </article>
+            <article>
+              <Target size={22} />
+              <span>Taxa de acerto</span>
+              <strong>{analyticsSummary.accuracy}%</strong>
+              <small>{analyticsSummary.correct}/{analyticsSummary.solved} respostas corretas</small>
+            </article>
+            <article>
+              <Activity size={22} />
+              <span>Participacao</span>
+              <strong>{analyticsSummary.participation}%</strong>
+              <small>{analyticsSummary.activeStudents} alunos com respostas</small>
+            </article>
+            <article>
+              <TrendingUp size={22} />
+              <span>Media por aluno</span>
+              <strong>{analyticsSummary.avgSolved}</strong>
+              <small>{analyticsSummary.avgXp} XP medio</small>
+            </article>
+          </div>
+
+          {selectedClass && (
+            <div className="analytics-focus">
+              <div>
+                <p className="eyebrow">Turma selecionada</p>
+                <h4>{selectedClass.key}</h4>
+                <span>
+                  {selectedClass.students} alunos · {selectedClass.solved} respostas · {selectedClass.accuracy}% acerto · {selectedClass.participation}% participacao
+                </span>
+              </div>
+              <Trophy size={28} />
+            </div>
+          )}
+
+          <div className="analytics-layout">
+            <section className="analytics-panel">
+              <div className="section-heading">
+                <div>
+                  <p className="eyebrow">Comparativo</p>
+                  <h3>Acerto por turma</h3>
+                </div>
+              </div>
+              <div className="teacher-chart">
+                {filteredClassStats.map((group) => (
+                  <article className="chart-row" key={group.key}>
+                    <div>
+                      <strong>{group.key}</strong>
+                      <span>{group.students} alunos · {group.solved} respostas · {group.avgSolved} por aluno</span>
+                    </div>
+                    <div className="chart-track">
+                      <i style={{ width: `${Math.max(4, group.accuracy)}%` }} />
+                    </div>
+                    <b>{group.accuracy}%</b>
+                  </article>
+                ))}
+                {!filteredClassStats.length && <p className="muted">Sem dados para os filtros selecionados.</p>}
+              </div>
+            </section>
+
+            <section className="analytics-panel">
+              <div className="section-heading">
+                <div>
+                  <p className="eyebrow">Engajamento</p>
+                  <h3>Volume de respostas</h3>
+                </div>
+              </div>
+              <div className="teacher-chart">
+                {filteredClassStats.map((group) => (
+                  <article className="chart-row compact" key={`${group.key}-volume`}>
+                    <div>
+                      <strong>{group.key}</strong>
+                      <span>{group.participation}% participacao · {group.avgXp} XP medio</span>
+                    </div>
+                    <div className="chart-track volume">
+                      <i style={{ width: `${Math.max(4, (group.solved / maxSolved) * 100)}%` }} />
+                    </div>
+                    <b>{group.solved}</b>
+                  </article>
+                ))}
+                {!filteredClassStats.length && <p className="muted">Sem dados para os filtros selecionados.</p>}
+              </div>
+            </section>
+          </div>
+
+          <section className="analytics-panel">
+            <div className="section-heading">
+              <div>
+                <p className="eyebrow">Evolucao</p>
+                <h3>Aprendizagem por missao semanal</h3>
+              </div>
+              <TrendingUp size={24} />
+            </div>
+            <p className="analytics-research-note">
+              Cada barra representa uma missao concluida pela turma filtrada. A altura principal mostra a taxa de acerto; o volume lateral ajuda a interpretar se a melhora veio com participacao suficiente.
+            </p>
+            <div className="mission-evolution-chart">
+              {missionEvolution.map((item, index) => {
+                const previous = missionEvolution[index - 1];
+                const delta = previous ? item.accuracy - previous.accuracy : 0;
+                return (
+                  <article className="mission-evolution-item" key={item.key}>
+                    <div className="mission-evolution-bars">
+                      <div className="mission-evolution-main-bar" title={`${item.accuracy}% de acerto`}>
+                        <span style={{ height: `${Math.max(4, item.accuracy)}%` }} />
+                      </div>
+                      <div className="mission-evolution-volume-bar" title={`${item.attempts} tentativas`}>
+                        <span style={{ height: `${Math.max(4, (item.attempts / maxEvolutionAttempts) * 100)}%` }} />
+                      </div>
+                    </div>
+                    <div className="mission-evolution-info">
+                      <strong>{item.title}</strong>
+                      <span>{item.period}</span>
+                      <b>{item.accuracy}% acerto</b>
+                      <small>
+                        {item.attempts} tentativas · {item.participants} alunos · XP medio {item.avgXp}
+                      </small>
+                      {previous && (
+                        <em className={delta >= 0 ? "positive" : "negative"}>
+                          {delta >= 0 ? "+" : ""}{delta} p.p. vs missao anterior
+                        </em>
+                      )}
+                    </div>
+                  </article>
+                );
+              })}
+              {!missionEvolution.length && (
+                <p className="muted">Ainda nao ha missoes concluidas para montar a serie historica dos filtros selecionados.</p>
+              )}
+            </div>
+          </section>
+
+          <section className="analytics-panel">
+            <div className="section-heading">
+              <div>
+                <p className="eyebrow">Ranking</p>
+                <h3>Turmas com melhor desempenho</h3>
+              </div>
+            </div>
+            <div className="analytics-ranking">
+              {topClasses.map((group, index) => (
+                <article key={`${group.key}-rank`}>
+                  <strong>{index + 1}</strong>
+                  <div>
+                    <b>{group.key}</b>
+                    <span>{group.accuracy}% acerto · {group.solved} respostas · melhor sequencia {group.bestStreak}</span>
+                  </div>
+                  <small>{group.avgCoins} moedas medias</small>
+                </article>
+              ))}
+              {!topClasses.length && <p className="muted">Sem ranking disponivel ainda.</p>}
+            </div>
+          </section>
+
+          <section className="analytics-panel">
+            <div className="section-heading">
+              <div>
+                <p className="eyebrow">Coleta</p>
+                <h3>Indicadores prontos para pesquisa</h3>
+              </div>
+            </div>
+            <p className="analytics-research-note">
+              Variaveis agregadas por turma para acompanhar desempenho, engajamento e progressao. Use estes indicadores como base para comparacoes entre turmas, ciclos de missao e recortes de intervencao.
+            </p>
+            <div className="analytics-data-grid">
+              {filteredClassStats.map((group) => (
+                <article key={`${group.key}-data`}>
+                  <div className="research-card-heading">
+                    <strong>{group.key}</strong>
+                    <span>amostra n={group.students}</span>
+                  </div>
+                  <div className="research-metric-grid">
+                    <div>
+                      <small>ACERTO_MEDIO</small>
+                      <b>{group.accuracy}%</b>
+                      <span>Percentual de respostas corretas.</span>
+                    </div>
+                    <div>
+                      <small>PARTICIPACAO</small>
+                      <b>{group.participation}%</b>
+                      <span>Alunos com pelo menos uma resposta.</span>
+                    </div>
+                    <div>
+                      <small>RESPOSTAS</small>
+                      <b>{group.solved}</b>
+                      <span>Total de interacoes registradas.</span>
+                    </div>
+                    <div>
+                      <small>QUESTOES_ALUNO</small>
+                      <b>{group.avgSolved}</b>
+                      <span>Media de respostas por estudante.</span>
+                    </div>
+                    <div>
+                      <small>XP_MEDIO</small>
+                      <b>{group.avgXp}</b>
+                      <span>Indicador de progressao gamificada.</span>
+                    </div>
+                    <div>
+                      <small>SEQUENCIA_MAX</small>
+                      <b>{group.bestStreak}</b>
+                      <span>Maior sequencia observada na turma.</span>
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
+        </section>
+      )}
+
+      {false && activeTab === "analytics" && (
         <section className="admin-section">
           <div className="section-heading">
             <div>

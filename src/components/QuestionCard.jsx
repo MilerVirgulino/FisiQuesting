@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 
-export default function QuestionCard({ question, onAnswer, index }) {
+export default function QuestionCard({ question, onAnswer, index, showImmediateFeedback = true }) {
   const [selected, setSelected] = useState("");
   const [result, setResult] = useState(null);
   const alternatives =
@@ -10,7 +10,12 @@ export default function QuestionCard({ question, onAnswer, index }) {
     event.preventDefault();
     if (selected === "") return;
     const answerResult = await onAnswer(question, Number(selected));
-    setResult(answerResult);
+    if (showImmediateFeedback) {
+      setResult(answerResult);
+      return;
+    }
+
+    setSelected("");
   }
 
   return (
@@ -41,7 +46,7 @@ export default function QuestionCard({ question, onAnswer, index }) {
           Responder
         </button>
       </form>
-      {result && (
+      {showImmediateFeedback && result && (
         <div className={result.correct ? "feedback correct" : "feedback wrong"}>
           <strong>
             {result.alreadyAnswered

@@ -11,6 +11,7 @@ import {
   where
 } from "firebase/firestore";
 import { db } from "../firebase-init";
+import missionTimingBalance from "../data/missionTimingBalance.json";
 import { todayKey } from "../utils/date";
 
 export async function listDailyQuests() {
@@ -109,7 +110,35 @@ export async function submitAnswer({ userId, question, selectedIndex, missionId 
   });
 }
 
-export async function submitMissionAttempt({ userId, mission, questions, answers }) {
+function getTimingBonus({ mission, questions, correct, solved, durationSeconds }) {
+  const targetMinutes = Number(mission.targetMinutes || 0);
+  const accuracyPercent = solved ? Math.round((correct / solved) * 100) : 0;
+  const minimumDuration = Number(questions.length || 0) * Number(missionTimingBalance.minimumSecondsPerQuestion || 0);
+
+  if (!missionTimingBalance.enabled || !targetMinutes || !durationSeconds || accuracyPercent < missionTimingBalance.minimumAccuracyPercent || durationSeconds < minimumDuration) {
+    return {
+      tier: "none",
+      label: "Sem bonus",
+      accuracyPercent,
+      xpMultiplier: 1,
+      coinMultiplier: 1
+    };
+  }
+
+  const targetSeconds = targetMinutes * 60;
+  const targetRatio = durationSeconds / targetSeconds;
+  const tier = missionTimingBalance.tiers.find((item) => targetRatio <= Number(item.maxTargetRatio)) || missionTimingBalance.tiers[missionTimingBalance.tiers.length - 1];
+
+  return {
+    tier: tier.id,
+    label: tier.label,
+    accuracyPercent,
+    xpMultiplier: Number(tier.xpMultiplier || 1),
+    coinMultiplier: Number(tier.coinMultiplier || 1)
+  };
+}
+
+export async function submitMissionAttempt({ userId, mission, questions, answers, startedAtMs, finishedAtMs = Date.now() }) {
   const dateKey = todayKey();
   const progressId = `${userId}_${dateKey}`;
   const attemptId = `${userId}_${mission.id}`;
@@ -140,12 +169,18 @@ export async function submitMissionAttempt({ userId, mission, questions, answers
   const completed = solved === questions.length && questions.length > 0;
   const bonusXp = completed ? Number(mission.rewardXp || 0) : 0;
   const rewardCoins = completed ? Number(mission.rewardCoins || 0) : 0;
-  const coinsEarned = completed && questions.length > 0
+  const baseCoinsEarned = completed && questions.length > 0
     ? Math.max(0, Math.round((rewardCoins * correct) / questions.length))
     : 0;
+  const durationSeconds = startedAtMs ? Math.max(0, Math.round((finishedAtMs - startedAtMs) / 1000)) : 0;
+  const timingBonus = getTimingBonus({ mission, questions, correct, solved, durationSeconds });
+  const baseXpEarned = questionXp + bonusXp;
+  const xpEarned = Math.round(baseXpEarned * timingBonus.xpMultiplier);
+  const coinsEarned = Math.round(baseCoinsEarned * timingBonus.coinMultiplier);
+  const timeBonusXp = Math.max(0, xpEarned - baseXpEarned);
+  const timeBonusCoins = Math.max(0, coinsEarned - baseCoinsEarned);
   const missed = Math.max(0, questions.length - correct);
-  const coinsLost = Math.max(0, rewardCoins - coinsEarned);
-  const xpEarned = questionXp + bonusXp;
+  const coinsLost = Math.max(0, rewardCoins - baseCoinsEarned);
   const areas = answerList.reduce((accumulator, answer) => {
     accumulator[answer.area] = (accumulator[answer.area] || 0) + 1;
     return accumulator;
@@ -184,10 +219,17 @@ export async function submitMissionAttempt({ userId, mission, questions, answers
       correct,
       questionXp,
       bonusXp,
+      baseXpEarned,
+      timeBonusXp,
       xpEarned,
       rewardCoins,
+      baseCoinsEarned,
+      timeBonusCoins,
       coinsEarned,
       coinsLost,
+      targetMinutes: Number(mission.targetMinutes || 0),
+      durationSeconds,
+      timingBonus,
       missed,
       completed,
       answers: answerList,
@@ -239,10 +281,17 @@ export async function submitMissionAttempt({ userId, mission, questions, answers
       correct,
       questionXp,
       bonusXp,
+      baseXpEarned,
+      timeBonusXp,
       xpEarned,
       rewardCoins,
+      baseCoinsEarned,
+      timeBonusCoins,
       coinsEarned,
       coinsLost,
+      targetMinutes: Number(mission.targetMinutes || 0),
+      durationSeconds,
+      timingBonus,
       missed,
       completed
     };
