@@ -1,9 +1,9 @@
 import React, { useMemo, useRef, useState } from "react";
 import { Circle, Eraser, Hand, Minus, PaintBucket, Pencil, Square, Trash2 } from "lucide-react";
 
-const DEFAULT_GRID_SIZE = 96;
-const RESOLUTION_OPTIONS = [32, 64, 96, 128];
-const EXPORT_SIZE = 384;
+const DEFAULT_GRID_SIZE = 128;
+const RESOLUTION_OPTIONS = [32, 64, 128];
+const EXPORT_SIZE = 256;
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 3;
 const ZOOM_STEP = 0.5;

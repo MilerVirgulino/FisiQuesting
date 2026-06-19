@@ -38,6 +38,11 @@
           "label": "Gorrinho Feio",
           "source": "png",
           "price": 10
+        },
+        "cabelin":{
+          "label": "Cabelin",
+          "source": "png",
+          "price": 15
         }
       }
     },
@@ -55,6 +60,11 @@
           "label": "Camisa Azul",
           "source": "png",
           "price": 20
+        },
+        "vestido": {
+          "label": "Vestido Rosa",
+          "source": "png",
+          "price": 30
         }
       }
     },
@@ -114,6 +124,11 @@
         },
         "machado": {
           "label": "Machado",
+          "source": "png",
+          "price": 1
+        },
+        "beck": {
+          "label": "beck",
           "source": "png",
           "price": 1
         }
