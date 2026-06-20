@@ -1,17 +1,18 @@
 import { arrayUnion, doc, runTransaction, serverTimestamp } from "firebase/firestore";
 import { db } from "../firebase-init";
-import { getAvatarItemPrice, isFreeAvatarItem } from "../data/avatarItems";
+import { getAvatarItemPrice, isFreeAvatarItem, loadAvatarCatalog } from "./avatarCatalogService";
 
 export function getOwnedAvatarItems(profile) {
   return Array.isArray(profile?.ownedAvatarItems) ? profile.ownedAvatarItems : [];
 }
 
-export function userOwnsAvatarItem(profile, categoryKey, itemId) {
-  return isFreeAvatarItem(categoryKey, itemId) || getOwnedAvatarItems(profile).includes(itemId);
+export function userOwnsAvatarItem(profile, categoryKey, itemId, catalog) {
+  return isFreeAvatarItem(catalog, categoryKey, itemId) || getOwnedAvatarItems(profile).includes(itemId);
 }
 
 export async function buyAvatarItem({ userId, categoryKey, itemId }) {
-  const price = getAvatarItemPrice(categoryKey, itemId);
+  const catalog = await loadAvatarCatalog();
+  const price = getAvatarItemPrice(catalog, categoryKey, itemId);
 
   if (price <= 0) {
     return { purchased: false, free: true };

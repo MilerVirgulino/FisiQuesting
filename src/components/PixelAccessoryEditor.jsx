@@ -1,5 +1,5 @@
-import React, { useMemo, useRef, useState } from "react";
-import { Circle, Eraser, Hand, Minus, PaintBucket, Pencil, Square, Trash2 } from "lucide-react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { Circle, Eraser, Hand, Minus, PaintBucket, Pencil, Pipette, Square, Trash2 } from "lucide-react";
 
 const DEFAULT_GRID_SIZE = 128;
 const RESOLUTION_OPTIONS = [32, 64, 128];
@@ -170,9 +170,45 @@ function applyIndexes(basePixels, indexes, activeTool, activeColor) {
   return nextPixels;
 }
 
-export default function PixelAccessoryEditor({ onChange }) {
-  const [gridSize, setGridSize] = useState(DEFAULT_GRID_SIZE);
-  const [pixels, setPixels] = useState(() => Array(DEFAULT_GRID_SIZE * DEFAULT_GRID_SIZE).fill(EMPTY_PIXEL));
+function canUseLocalStorage() {
+  return typeof window !== "undefined" && window.localStorage;
+}
+
+function readPixelDraft(storageKey) {
+  if (!storageKey || !canUseLocalStorage()) return null;
+
+  try {
+    const draft = JSON.parse(window.localStorage.getItem(storageKey) || "null");
+    if (!draft?.pixels || !draft?.gridSize) return null;
+    if (draft.pixels.length !== draft.gridSize * draft.gridSize) return null;
+    return draft;
+  } catch {
+    return null;
+  }
+}
+
+function writePixelDraft(storageKey, gridSize, pixels) {
+  if (!storageKey || !canUseLocalStorage()) return;
+
+  try {
+    window.localStorage.setItem(storageKey, JSON.stringify({ gridSize, pixels, savedAt: Date.now() }));
+  } catch {
+    // Local draft is a convenience. If storage is full, drawing still works.
+  }
+}
+
+function clearPixelDraft(storageKey) {
+  if (storageKey && canUseLocalStorage()) {
+    window.localStorage.removeItem(storageKey);
+  }
+}
+
+export default function PixelAccessoryEditor({ onChange, storageKey, clearDraftToken = 0, showGuide = true }) {
+  const restoredDraft = readPixelDraft(storageKey);
+  const initialGridSize = restoredDraft?.gridSize || DEFAULT_GRID_SIZE;
+  const initialPixels = restoredDraft?.pixels || Array(initialGridSize * initialGridSize).fill(EMPTY_PIXEL);
+  const [gridSize, setGridSize] = useState(initialGridSize);
+  const [pixels, setPixels] = useState(() => initialPixels);
   const [previewPixels, setPreviewPixels] = useState(null);
   const [color, setColor] = useState(PALETTE[0]);
   const [tool, setTool] = useState("pencil");
@@ -189,14 +225,42 @@ export default function PixelAccessoryEditor({ onChange }) {
   const shapeTools = ["line", "rectangle", "circle"];
   const isShapeTool = shapeTools.includes(tool);
 
+  useEffect(() => {
+    if (restoredDraft?.pixels?.some(Boolean)) {
+      onChange?.(pixelsToDataUrl(restoredDraft.pixels, restoredDraft.gridSize));
+    }
+    // The draft should be restored only on the first mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!clearDraftToken) return;
+    const emptyPixels = Array(DEFAULT_GRID_SIZE * DEFAULT_GRID_SIZE).fill(EMPTY_PIXEL);
+    clearPixelDraft(storageKey);
+    setGridSize(DEFAULT_GRID_SIZE);
+    pixelsRef.current = emptyPixels;
+    setPixels(emptyPixels);
+    setPreviewPixels(null);
+    shapeStartIndexRef.current = null;
+    onChange?.(null);
+  }, [clearDraftToken, onChange, storageKey]);
+
   function updatePixels(nextPixels, activeGridSize = gridSize) {
     pixelsRef.current = nextPixels;
     setPixels(nextPixels);
+    writePixelDraft(storageKey, activeGridSize, nextPixels);
     onChange?.(pixelsToDataUrl(nextPixels, activeGridSize));
   }
 
   function paint(index) {
     if (index < 0 || index >= pixelsRef.current.length) return;
+
+    if (tool === "eyedropper") {
+      const pickedColor = pixelsRef.current[index];
+      if (pickedColor) setColor(pickedColor);
+      setTool("pencil");
+      return;
+    }
 
     if (tool === "fill") {
       updatePixels(fillPixels(pixelsRef.current, index, color, gridSize));
@@ -274,6 +338,7 @@ export default function PixelAccessoryEditor({ onChange }) {
     shapeStartIndexRef.current = null;
     pixelsRef.current = emptyPixels;
     setPixels(emptyPixels);
+    writePixelDraft(storageKey, nextGridSize, emptyPixels);
     onChange?.(null);
   }
 
@@ -311,19 +376,6 @@ export default function PixelAccessoryEditor({ onChange }) {
         <button type="button" onClick={() => changeZoom(zoom + ZOOM_STEP)} disabled={zoom >= MAX_ZOOM} aria-label="Aumentar zoom">
           +
         </button>
-      </div>
-
-      <div className="pixel-editor-toolbar">
-        <div className="pixel-tool-group" role="group" aria-label="Ferramentas de pixelart">
-          <button type="button" className={tool === "pencil" ? "active" : ""} onClick={() => setTool("pencil")} aria-label="Pincel" title="Pincel"><Pencil size={18} /></button>
-          <button type="button" className={tool === "fill" ? "active" : ""} onClick={() => setTool("fill")} aria-label="Balde" title="Balde"><PaintBucket size={18} /></button>
-          <button type="button" className={tool === "eraser" ? "active" : ""} onClick={() => setTool("eraser")} aria-label="Borracha" title="Borracha"><Eraser size={18} /></button>
-          <button type="button" className={tool === "pan" ? "active" : ""} onClick={() => setTool("pan")} aria-label="Mao" title="Mao"><Hand size={18} /></button>
-          <button type="button" className={tool === "line" ? "active" : ""} onClick={() => setTool("line")} aria-label="Reta" title="Reta"><Minus size={18} /></button>
-          <button type="button" className={tool === "rectangle" ? "active" : ""} onClick={() => setTool("rectangle")} aria-label="Retangulo" title="Retangulo"><Square size={18} /></button>
-          <button type="button" className={tool === "circle" ? "active" : ""} onClick={() => setTool("circle")} aria-label="Circulo" title="Circulo"><Circle size={18} /></button>
-        </div>
-        <button type="button" className="secondary pixel-clear-tool" onClick={clearPixels} aria-label="Limpar" title="Limpar"><Trash2 size={18} /></button>
       </div>
 
       <div className="pixel-resolution-row" role="group" aria-label="Resolucao da malha de pixels">
@@ -374,78 +426,94 @@ export default function PixelAccessoryEditor({ onChange }) {
       <div className="pixel-workbench">
         <div className="pixel-layer-note">
           <strong>Camada de desenho</strong>
-          <span>O corpo aparece por baixo so como guia.</span>
+          <span>{showGuide ? "O corpo aparece por baixo so como guia." : "Desenho livre, sem guia por baixo."}</span>
         </div>
 
-        <div className="pixel-canvas-scroll" ref={scrollRef}>
-          <div
-            ref={canvasRef}
-            className={`pixel-canvas-wrap pixel-tool-${tool}`}
-            style={{
-              "--pixel-zoom": zoom
-            }}
-            onPointerDown={(event) => {
-              event.preventDefault();
-              event.currentTarget.setPointerCapture?.(event.pointerId);
-              if (tool === "pan") {
-                setDrawing(true);
-                startPan(event);
-                return;
-              }
-              setDrawing(true);
-              lastPaintedIndexRef.current = null;
-              if (isShapeTool) {
-                shapeStartIndexRef.current = getPointerIndex(event);
-                updateShapePreview(event);
-                return;
-            }
-            paintPointerPath(event);
-          }}
-          onPointerMove={(event) => {
-            if (drawing && tool === "pan") {
-              movePan(event);
-              return;
-            }
-            if (!drawing || tool === "fill") return;
-              if (isShapeTool) {
-                updateShapePreview(event);
-              return;
-            }
-            paintPointerPath(event);
-          }}
-            onPointerLeave={() => {
-              setDrawing(false);
-              stopPan();
-              lastPaintedIndexRef.current = null;
-              if (isShapeTool) {
-                shapeStartIndexRef.current = null;
-                setPreviewPixels(null);
-              }
-            }}
-            onPointerUp={(event) => {
-              event.currentTarget.releasePointerCapture?.(event.pointerId);
-              if (tool === "pan") {
-                stopPan();
-              }
-              if (isShapeTool) {
-                commitShape(event);
-              }
-              setDrawing(false);
-              lastPaintedIndexRef.current = null;
-            }}
-          >
-            <img className="pixel-reference-layer" src="/assets/egg-sprites/base/chibi_body.png" alt="" />
+        <div className="pixel-workspace">
+          <div className="pixel-editor-toolbar" aria-label="Ferramentas do editor">
+            <div className="pixel-tool-group" role="group" aria-label="Ferramentas de pixelart">
+              <button type="button" className={tool === "pencil" ? "active" : ""} onClick={() => setTool("pencil")} aria-label="Pincel" title="Pincel"><Pencil size={18} /></button>
+              <button type="button" className={tool === "fill" ? "active" : ""} onClick={() => setTool("fill")} aria-label="Balde" title="Balde"><PaintBucket size={18} /></button>
+              <button type="button" className={tool === "eyedropper" ? "active" : ""} onClick={() => setTool("eyedropper")} aria-label="Conta-gotas" title="Conta-gotas"><Pipette size={18} /></button>
+              <button type="button" className={tool === "eraser" ? "active" : ""} onClick={() => setTool("eraser")} aria-label="Borracha" title="Borracha"><Eraser size={18} /></button>
+              <button type="button" className={tool === "pan" ? "active" : ""} onClick={() => setTool("pan")} aria-label="Mao" title="Mao"><Hand size={18} /></button>
+              <button type="button" className={tool === "line" ? "active" : ""} onClick={() => setTool("line")} aria-label="Reta" title="Reta"><Minus size={18} /></button>
+              <button type="button" className={tool === "rectangle" ? "active" : ""} onClick={() => setTool("rectangle")} aria-label="Retangulo" title="Retangulo"><Square size={18} /></button>
+              <button type="button" className={tool === "circle" ? "active" : ""} onClick={() => setTool("circle")} aria-label="Circulo" title="Circulo"><Circle size={18} /></button>
+            </div>
+            <button type="button" className="secondary pixel-clear-tool" onClick={clearPixels} aria-label="Limpar" title="Limpar"><Trash2 size={18} /></button>
+          </div>
+
+          <div className="pixel-canvas-scroll" ref={scrollRef}>
             <div
-              className="pixel-grid"
+              ref={canvasRef}
+              className={`pixel-canvas-wrap pixel-tool-${tool}`}
               style={{
-                "--pixel-grid-size": gridSize,
-                gridTemplateColumns: `repeat(${gridSize}, 1fr)`
+                "--pixel-zoom": zoom
               }}
-              aria-hidden="true"
+              onPointerDown={(event) => {
+                event.preventDefault();
+                event.currentTarget.setPointerCapture?.(event.pointerId);
+                if (tool === "pan") {
+                  setDrawing(true);
+                  startPan(event);
+                  return;
+                }
+                setDrawing(true);
+                lastPaintedIndexRef.current = null;
+                if (isShapeTool) {
+                  shapeStartIndexRef.current = getPointerIndex(event);
+                  updateShapePreview(event);
+                  return;
+                }
+                paintPointerPath(event);
+              }}
+              onPointerMove={(event) => {
+                if (drawing && tool === "pan") {
+                  movePan(event);
+                  return;
+                }
+                if (!drawing || tool === "fill" || tool === "eyedropper") return;
+                if (isShapeTool) {
+                  updateShapePreview(event);
+                  return;
+                }
+                paintPointerPath(event);
+              }}
+              onPointerLeave={() => {
+                setDrawing(false);
+                stopPan();
+                lastPaintedIndexRef.current = null;
+                if (isShapeTool) {
+                  shapeStartIndexRef.current = null;
+                  setPreviewPixels(null);
+                }
+              }}
+              onPointerUp={(event) => {
+                event.currentTarget.releasePointerCapture?.(event.pointerId);
+                if (tool === "pan") {
+                  stopPan();
+                }
+                if (isShapeTool) {
+                  commitShape(event);
+                }
+                setDrawing(false);
+                lastPaintedIndexRef.current = null;
+              }}
             >
-              {displayPixels.map((pixelColor, index) => (
-                <span key={index} style={{ backgroundColor: pixelColor || "transparent" }} />
-              ))}
+              {showGuide && <img className="pixel-reference-layer" src="/assets/egg-sprites/base/chibi_body.png" alt="" />}
+              <div
+                className="pixel-grid"
+                style={{
+                  "--pixel-grid-size": gridSize,
+                  gridTemplateColumns: `repeat(${gridSize}, 1fr)`
+                }}
+                aria-hidden="true"
+              >
+                {displayPixels.map((pixelColor, index) => (
+                  <span key={index} style={{ backgroundColor: pixelColor || "transparent" }} />
+                ))}
+              </div>
             </div>
           </div>
         </div>

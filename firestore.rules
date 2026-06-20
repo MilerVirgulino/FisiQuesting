@@ -81,7 +81,7 @@ service cloud.firestore {
       allow create: if isSelf(userId)
         && request.resource.data.role == "student"
         && request.resource.data.status == "pending";
-      allow read: if isSelf(userId) || isAdmin();
+      allow read: if isSelf(userId) || isAdmin() || isApproved();
       allow update: if isAdmin()
         || (
           isSelf(userId)
@@ -110,9 +110,36 @@ service cloud.firestore {
       allow create: if isApproved()
         && request.resource.data.userId == request.auth.uid
         && request.resource.data.status == "pending"
-        && request.resource.data.category == "accessories";
-      allow read: if isAdmin() || (signedIn() && resource.data.userId == request.auth.uid);
+        && request.resource.data.category in ["accessories", "emojis"];
+      allow read: if isAdmin()
+        || (signedIn() && resource.data.userId == request.auth.uid)
+        || (isApproved() && resource.data.status == "listed");
       allow update, delete: if isAdmin();
+    }
+
+    match /avatarItems/{itemId} {
+      allow read: if isApproved();
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /avatarInteractions/{interactionId} {
+      allow create: if isApproved()
+        && request.resource.data.fromUserId == request.auth.uid
+        && request.resource.data.toUserId is string
+        && request.resource.data.emojiId is string
+        && request.resource.data.status == "unread";
+      allow read: if isAdmin()
+        || (
+          signedIn()
+          && (
+            resource.data.fromUserId == request.auth.uid
+            || resource.data.toUserId == request.auth.uid
+          )
+        );
+      allow update: if isApproved()
+        && resource.data.toUserId == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["status", "readAt", "updatedAt"]);
+      allow delete: if isAdmin();
     }
 
     match /missionAttempts/{attemptId} {

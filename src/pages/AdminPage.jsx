@@ -1,8 +1,11 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Activity, BarChart3, BookOpen, Download, GripVertical, Lock, Palette, RadioTower, Target, Trash2, TrendingUp, Trophy, Users } from "lucide-react";
+import { Activity, BarChart3, BookOpen, CircleDollarSign, Download, GripVertical, Lock, Palette, RadioTower, Share2, Target, Trash2, TrendingUp, Trophy, Users } from "lucide-react";
 import AvatarPreview from "../components/AvatarPreview.jsx";
 import {
+  approveAccessoryRequestToShop,
+  deleteAccessoryRequest,
   listAccessoryRequests,
+  updateAccessoryRequestDetails,
   updateAccessoryRequestStatus
 } from "../services/accessoryRequestService";
 import {
@@ -18,6 +21,8 @@ import {
 } from "../services/adminService";
 import { createMission, deleteMission, listAllMissions, updateMission } from "../services/missionService";
 import { createQuestion, deleteQuestion, listAllQuestions, updateQuestion } from "../services/questionService";
+import { getSocialConfig, saveSocialConfig, socialVisibilityOptions } from "../services/socialService";
+import { defaultEconomyConfig, getEconomyConfig, saveEconomyConfig } from "../services/economyService";
 
 const areas = ["Mecanica", "Termologia", "Optica", "Eletricidade", "Ondulatoria", "Fisica Moderna"];
 const difficulties = ["facil", "medio", "dificil"];
@@ -54,6 +59,8 @@ const tabs = [
   { id: "questions", label: "Questoes", icon: BookOpen },
   { id: "classes", label: "Turmas", icon: Users },
   { id: "creations", label: "Criacoes", icon: Palette },
+  { id: "finance", label: "Economia", icon: CircleDollarSign },
+  { id: "social", label: "Social", icon: Share2 },
   { id: "analytics", label: "Graficos", icon: BarChart3 }
 ];
 
@@ -207,6 +214,9 @@ export default function AdminPage() {
   const [missions, setMissions] = useState([]);
   const [missionAttempts, setMissionAttempts] = useState([]);
   const [accessoryRequests, setAccessoryRequests] = useState([]);
+  const [accessoryShopPrices, setAccessoryShopPrices] = useState({});
+  const [accessoryShopCategories, setAccessoryShopCategories] = useState({});
+  const [accessoryTitles, setAccessoryTitles] = useState({});
   const [question, setQuestion] = useState(initialQuestion);
   const [mission, setMission] = useState(initialMission);
   const [loadErrors, setLoadErrors] = useState([]);
@@ -221,6 +231,10 @@ export default function AdminPage() {
   const [classMessage, setClassMessage] = useState("");
   const [editingQuestion, setEditingQuestion] = useState(null);
   const [editingMission, setEditingMission] = useState(null);
+  const [socialConfig, setSocialConfig] = useState({ visibilityScope: "class" });
+  const [socialMessage, setSocialMessage] = useState("");
+  const [economyConfig, setEconomyConfig] = useState(defaultEconomyConfig);
+  const [economyMessage, setEconomyMessage] = useState("");
 
   const classStats = useMemo(() => buildClassStats(users), [users]);
   const pendingStudents = useMemo(
@@ -338,9 +352,11 @@ export default function AdminPage() {
       listAllQuestions(),
       listAllMissions(),
       listMissionAttempts(),
-      listAccessoryRequests()
+      listAccessoryRequests(),
+      getSocialConfig(),
+      getEconomyConfig()
     ]);
-    const labels = ["usuarios", "questoes", "missoes", "tentativas", "criacoes"];
+    const labels = ["usuarios", "questoes", "missoes", "tentativas", "criacoes", "social", "economia"];
     const errors = [];
 
     results.forEach((result, index) => {
@@ -354,6 +370,8 @@ export default function AdminPage() {
       if (index === 2) setMissions(result.value);
       if (index === 3) setMissionAttempts(result.value);
       if (index === 4) setAccessoryRequests(result.value);
+      if (index === 5) setSocialConfig(result.value);
+      if (index === 6) setEconomyConfig(result.value);
     });
 
     setLoadErrors(errors);
@@ -540,6 +558,41 @@ export default function AdminPage() {
   async function handleAccessoryStatus(item, status) {
     await updateAccessoryRequestStatus(item.id, status);
     await refresh();
+  }
+
+  async function handleAccessoryPublish(item) {
+    const price = Number(accessoryShopPrices[item.id] ?? item.shopPrice ?? economyConfig.avatarItemPrice ?? defaultEconomyConfig.avatarItemPrice);
+    const categoryKey = accessoryShopCategories[item.id] || item.shopCategoryKey || item.category || "accessories";
+    await approveAccessoryRequestToShop(item, { price, categoryKey });
+    await refresh();
+  }
+
+  async function handleAccessoryDelete(item) {
+    const shouldDelete = window.confirm(`Excluir definitivamente "${item.title || "esta criacao"}" do catalogo?`);
+    if (!shouldDelete) return;
+    await deleteAccessoryRequest(item.id);
+    await refresh();
+  }
+
+  async function handleAccessoryTitleSave(item) {
+    const title = String(accessoryTitles[item.id] ?? item.title ?? "").trim();
+    if (!title) return;
+    await updateAccessoryRequestDetails(item.id, { title });
+    await refresh();
+  }
+
+  async function handleSaveSocialConfig(event) {
+    event.preventDefault();
+    setSocialMessage("");
+    await saveSocialConfig(socialConfig);
+    setSocialMessage("Configuracao social salva.");
+  }
+
+  async function handleSaveEconomyConfig(event) {
+    event.preventDefault();
+    setEconomyMessage("");
+    await saveEconomyConfig(economyConfig);
+    setEconomyMessage("Controle financeiro salvo.");
   }
 
   return (
@@ -1463,7 +1516,7 @@ export default function AdminPage() {
             <div>
               <p className="eyebrow">Oficina dos alunos</p>
               <h3>Pedidos de acessorios</h3>
-              <span>Baixe o PNG, avalie e depois adicione manualmente no arquivo de itens ou leve para votacao.</span>
+              <span>Avalie, leve para votacao ou publique direto na loja com preco definido.</span>
             </div>
             <Palette size={26} />
           </div>
@@ -1471,6 +1524,10 @@ export default function AdminPage() {
           <div className="accessory-request-grid">
             {accessoryRequests.map((item) => (
               <article className={`accessory-request-card status-${item.status || "pending"}`} key={item.id}>
+                <div className="accessory-card-top">
+                  <span>{item.status || "pending"}</span>
+                  <b>{item.grade || "sem serie"} / {item.className || "sem turma"}</b>
+                </div>
                 <div className="accessory-request-image">
                   {item.imageDataUrl ? <img src={item.imageDataUrl} alt={item.title || "Acessorio criado"} /> : <span>Sem PNG</span>}
                 </div>
@@ -1480,7 +1537,68 @@ export default function AdminPage() {
                     <strong>{item.title || "Sem titulo"}</strong>
                     <small>{item.userName || item.userEmail || "Aluno"} · {item.pricePaid || 0} moedas pagas</small>
                   </div>
+                  <label className="accessory-title-edit">
+                    Nome do item
+                    <div>
+                      <input
+                        value={accessoryTitles[item.id] ?? item.title ?? ""}
+                        onChange={(event) => setAccessoryTitles((current) => ({
+                          ...current,
+                          [item.id]: event.target.value
+                        }))}
+                        maxLength={48}
+                      />
+                      <button type="button" className="secondary" onClick={() => handleAccessoryTitleSave(item)}>
+                        Salvar
+                      </button>
+                    </div>
+                  </label>
                   {item.description && <p>{item.description}</p>}
+                  <label className="accessory-shop-price">
+                    Status
+                    <select
+                      value={item.status || "pending"}
+                      onChange={(event) => handleAccessoryStatus(item, event.target.value)}
+                    >
+                      <option value="pending">Pendente</option>
+                      <option value="voting">Votacao</option>
+                      <option value="approved">Aprovado</option>
+                      <option value="listed">Na loja</option>
+                      <option value="rejected">Rejeitado</option>
+                    </select>
+                  </label>
+                  <label className="accessory-shop-price">
+                    Preco na loja
+                    <input
+                      type="number"
+                      min="0"
+                      value={accessoryShopPrices[item.id] ?? item.shopPrice ?? economyConfig.avatarItemPrice ?? defaultEconomyConfig.avatarItemPrice}
+                      onChange={(event) => setAccessoryShopPrices((current) => ({
+                        ...current,
+                        [item.id]: event.target.value
+                      }))}
+                    />
+                  </label>
+                  <label className="accessory-shop-price">
+                    Categoria
+                    <select
+                      value={accessoryShopCategories[item.id] || item.shopCategoryKey || item.category || "accessories"}
+                      onChange={(event) => setAccessoryShopCategories((current) => ({
+                        ...current,
+                        [item.id]: event.target.value
+                      }))}
+                    >
+                      <option value="base">Base</option>
+                      <option value="hair">Cabelo</option>
+                      <option value="shirts">Camisa</option>
+                      <option value="eyes">Olhos</option>
+                      <option value="mouths">Boca</option>
+                      <option value="accessories">Acessorio</option>
+                      <option value="pants">Calca</option>
+                      <option value="pets">Pet</option>
+                      <option value="emojis">Emoji</option>
+                    </select>
+                  </label>
                   <div className="row-actions">
                     <button type="button" className="secondary" onClick={() => downloadAccessoryRequest(item)}>
                       <Download size={16} />
@@ -1489,11 +1607,20 @@ export default function AdminPage() {
                     <button type="button" onClick={() => handleAccessoryStatus(item, "voting")}>
                       Votacao
                     </button>
-                    <button type="button" onClick={() => handleAccessoryStatus(item, "approved")}>
-                      Aprovar
-                    </button>
+                    {item.status === "listed" ? (
+                      <button type="button" onClick={() => handleAccessoryStatus(item, "approved")}>
+                        Tirar da loja
+                      </button>
+                    ) : (
+                      <button type="button" onClick={() => handleAccessoryPublish(item)}>
+                        Aprovar
+                      </button>
+                    )}
                     <button type="button" className="danger-button" onClick={() => handleAccessoryStatus(item, "rejected")}>
                       Rejeitar
+                    </button>
+                    <button type="button" className="danger-button" onClick={() => handleAccessoryDelete(item)}>
+                      Excluir
                     </button>
                   </div>
                 </div>
@@ -1501,6 +1628,101 @@ export default function AdminPage() {
             ))}
             {!accessoryRequests.length && <p className="muted">Nenhuma criacao enviada ainda.</p>}
           </div>
+        </section>
+      )}
+
+      {activeTab === "finance" && (
+        <section className="admin-section finance-admin-panel">
+          <div className="section-heading">
+            <div>
+              <p className="eyebrow">Controle financeiro</p>
+              <h3>Custos de moedas do sistema</h3>
+              <span>Ajuste a economia conforme a resposta da turma e o ritmo das atividades.</span>
+            </div>
+            <CircleDollarSign size={26} />
+          </div>
+
+          <form className="admin-form" onSubmit={handleSaveEconomyConfig}>
+            <div className="finance-control-grid">
+              <label>
+                Preco padrao de itens
+                <input
+                  type="number"
+                  min="0"
+                  value={economyConfig.avatarItemPrice}
+                  onChange={(event) => setEconomyConfig((current) => ({ ...current, avatarItemPrice: event.target.value }))}
+                />
+                <small>Usado como valor inicial quando o professor publica uma criacao na loja.</small>
+              </label>
+              <label>
+                Criar item ou emoji
+                <input
+                  type="number"
+                  min="0"
+                  value={economyConfig.customCreationPrice}
+                  onChange={(event) => setEconomyConfig((current) => ({ ...current, customCreationPrice: event.target.value }))}
+                />
+                <small>Cobrado quando o aluno envia uma criacao para avaliacao.</small>
+              </label>
+              <label>
+                Enviar emoji
+                <input
+                  type="number"
+                  min="0"
+                  value={economyConfig.emojiSendPrice}
+                  onChange={(event) => setEconomyConfig((current) => ({ ...current, emojiSendPrice: event.target.value }))}
+                />
+                <small>Cobrado a cada interacao enviada para um colega.</small>
+              </label>
+            </div>
+            <button type="submit">Salvar economia</button>
+          </form>
+
+          {economyMessage && <p className="muted">{economyMessage}</p>}
+        </section>
+      )}
+
+      {activeTab === "social" && (
+        <section className="admin-section social-admin-panel">
+          <div className="section-heading">
+            <div>
+              <p className="eyebrow">Interacoes sociais</p>
+              <h3>Controle de visibilidade entre estudantes</h3>
+              <span>Defina o alcance do painel Colegas para atividades sociais e envio de emojis.</span>
+            </div>
+            <Share2 size={26} />
+          </div>
+
+          <form className="admin-form" onSubmit={handleSaveSocialConfig}>
+            <label>
+              Quem pode aparecer para os alunos
+              <select
+                value={socialConfig.visibilityScope || "class"}
+                onChange={(event) => setSocialConfig({ ...socialConfig, visibilityScope: event.target.value })}
+              >
+                {socialVisibilityOptions.map((option) => (
+                  <option value={option.value} key={option.value}>{option.label}</option>
+                ))}
+              </select>
+            </label>
+            <div className="social-scope-preview">
+              <article>
+                <strong>Apenas turma</strong>
+                <span>O aluno ve somente colegas do mesmo ano e turma.</span>
+              </article>
+              <article>
+                <strong>Toda a serie</strong>
+                <span>O aluno ve estudantes do mesmo ano, em qualquer turma.</span>
+              </article>
+              <article>
+                <strong>Todos</strong>
+                <span>Todos os estudantes aprovados aparecem no painel.</span>
+              </article>
+            </div>
+            <button type="submit">Salvar configuracao social</button>
+          </form>
+
+          {socialMessage && <p className="muted">{socialMessage}</p>}
         </section>
       )}
 

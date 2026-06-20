@@ -1,5 +1,6 @@
 import {
   collection,
+  deleteDoc,
   doc,
   getDocs,
   orderBy,
@@ -9,25 +10,29 @@ import {
   updateDoc
 } from "firebase/firestore";
 import { db } from "../firebase-init";
+import { buildAvatarItemFromRequest, clearAvatarCatalogCache } from "./avatarCatalogService";
+import { defaultEconomyConfig, getEconomyConfig } from "./economyService";
 
-export const ACCESSORY_REQUEST_PRICE = 150;
+export const ACCESSORY_REQUEST_PRICE = defaultEconomyConfig.customCreationPrice;
 export const ACCESSORY_REQUEST_MAX_BYTES = 450 * 1024;
 
-export async function createAccessoryRequest({ userId, profile, title, description, imageDataUrl, fileName }) {
+export async function createAccessoryRequest({ userId, profile, title, description, imageDataUrl, fileName, category = "accessories" }) {
   const userRef = doc(db, "users", userId);
   const requestRef = doc(collection(db, "customAccessoryRequests"));
+  const economy = await getEconomyConfig();
+  const requestPrice = Number(economy.customCreationPrice || 0);
 
   return runTransaction(db, async (transaction) => {
     const userSnapshot = await transaction.get(userRef);
     const userData = userSnapshot.exists() ? userSnapshot.data() : {};
     const coins = Number(userData.coins || 0);
 
-    if (coins < ACCESSORY_REQUEST_PRICE) {
+    if (coins < requestPrice) {
       return { created: false, insufficientCoins: true, coins };
     }
 
     transaction.update(userRef, {
-      coins: coins - ACCESSORY_REQUEST_PRICE,
+      coins: coins - requestPrice,
       updatedAt: serverTimestamp()
     });
 
@@ -41,15 +46,15 @@ export async function createAccessoryRequest({ userId, profile, title, descripti
       description: String(description || "").trim(),
       imageDataUrl,
       fileName: fileName || "accessory.png",
-      category: "accessories",
-      pricePaid: ACCESSORY_REQUEST_PRICE,
+      category,
+      pricePaid: requestPrice,
       status: "pending",
       votes: 0,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp()
     });
 
-    return { created: true, requestId: requestRef.id, coins: coins - ACCESSORY_REQUEST_PRICE };
+    return { created: true, requestId: requestRef.id, coins: coins - requestPrice };
   });
 }
 
@@ -63,4 +68,32 @@ export function updateAccessoryRequestStatus(requestId, status) {
     status,
     updatedAt: serverTimestamp()
   });
+}
+
+export async function updateAccessoryRequestDetails(requestId, details) {
+  await updateDoc(doc(db, "customAccessoryRequests", requestId), {
+    ...details,
+    updatedAt: serverTimestamp()
+  });
+  clearAvatarCatalogCache();
+}
+
+export async function approveAccessoryRequestToShop(request, { price, categoryKey }) {
+  const published = buildAvatarItemFromRequest(request, { price, categoryKey });
+  await updateDoc(doc(db, "customAccessoryRequests", request.id), {
+    status: "listed",
+    shopItemId: published.itemId,
+    shopCategoryKey: published.shopCategoryKey,
+    shopCategoryLabel: published.shopCategoryLabel,
+    shopFolder: published.shopFolder,
+    shopPrice: Number(price || 0),
+    updatedAt: serverTimestamp()
+  });
+  clearAvatarCatalogCache();
+  return published;
+}
+
+export async function deleteAccessoryRequest(requestId) {
+  await deleteDoc(doc(db, "customAccessoryRequests", requestId));
+  clearAvatarCatalogCache();
 }

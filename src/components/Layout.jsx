@@ -1,10 +1,35 @@
-import React from "react";
-import { BookOpen, Home, LogOut, ShieldCheck, Swords, UserRound } from "lucide-react";
+import React, { useEffect, useState } from "react";
+import { BookOpen, Home, LogOut, ShieldCheck, Swords, UserRound, UsersRound } from "lucide-react";
 import { NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "../services/authService.jsx";
+import { listUnreadInteractionCount } from "../services/socialService";
 
 export default function Layout() {
   const { logout, profile, isAdmin } = useAuth();
+  const [unreadInteractions, setUnreadInteractions] = useState(0);
+
+  useEffect(() => {
+    if (!profile?.id || profile?.status !== "approved") return;
+    let active = true;
+
+    function refreshUnreadCount() {
+      listUnreadInteractionCount(profile.id)
+      .then((count) => {
+        if (active) setUnreadInteractions(count);
+      })
+      .catch(() => {
+        if (active) setUnreadInteractions(0);
+      });
+    }
+
+    refreshUnreadCount();
+    window.addEventListener("fisioquest:social-updated", refreshUnreadCount);
+
+    return () => {
+      active = false;
+      window.removeEventListener("fisioquest:social-updated", refreshUnreadCount);
+    };
+  }, [profile?.id, profile?.status]);
 
   return (
     <div className="app-shell">
@@ -37,6 +62,13 @@ export default function Layout() {
         <NavLink to="/avatar">
           <UserRound size={20} />
           <span>Avatar</span>
+        </NavLink>
+        <NavLink to="/colegas">
+          <span className="nav-icon-badge-wrap">
+            <UsersRound size={20} />
+            {unreadInteractions > 0 && <span className="nav-notification-dot">{Math.min(9, unreadInteractions)}</span>}
+          </span>
+          <span>Colegas</span>
         </NavLink>
         <NavLink to="/batalha">
           <Swords size={20} />

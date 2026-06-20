@@ -10,6 +10,7 @@ import DashboardPage from "./pages/DashboardPage.jsx";
 import LoginPage from "./pages/LoginPage.jsx";
 import PendingPage from "./pages/PendingPage.jsx";
 import QuestionsPage from "./pages/QuestionsPage.jsx";
+import SocialPage from "./pages/SocialPage.jsx";
 
 export default function App() {
   return (
@@ -39,6 +40,14 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <AvatarPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/colegas"
+            element={
+              <ProtectedRoute>
+                <SocialPage />
               </ProtectedRoute>
             }
           />
