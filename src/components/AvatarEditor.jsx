@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import AvatarPreview from "./AvatarPreview.jsx";
 import PixelAccessoryEditor from "./PixelAccessoryEditor.jsx";
 import {
@@ -13,6 +13,7 @@ import { ACCESSORY_REQUEST_PRICE, createAccessoryRequest } from "../services/acc
 import { saveUserAvatar } from "../services/avatarService";
 import { buyAvatarItem, userOwnsAvatarItem } from "../services/avatarShopService";
 import { getEconomyConfig } from "../services/economyService";
+import { pixelDataToDataUrl } from "../utils/pixelArt";
 
 const ACCESSORY_DRAFT_STORAGE_KEY = "fisioquest.pixelAccessoryDraft";
 const EMOJI_DRAFT_STORAGE_KEY = "fisioquest.pixelEmojiDraft";
@@ -64,7 +65,7 @@ export default function AvatarEditor({ userId, profile, onSaved }) {
   const [previewItem, setPreviewItem] = useState(null);
   const [requestTitle, setRequestTitle] = useState("");
   const [requestDescription, setRequestDescription] = useState("");
-  const [requestImage, setRequestImage] = useState(null);
+  const [requestPixelData, setRequestPixelData] = useState(null);
   const [requestType, setRequestType] = useState("avatarItem");
   const [requestingAccessory, setRequestingAccessory] = useState(false);
   const [clearDraftToken, setClearDraftToken] = useState(0);
@@ -86,6 +87,10 @@ export default function AvatarEditor({ userId, profile, onSaved }) {
         .map((option) => ({ ...option, category }))
     }))
     .filter((section) => section.items.length > 0);
+  const requestPreviewSrc = useMemo(() => {
+    if (!requestPixelData) return "";
+    return pixelDataToDataUrl(requestPixelData);
+  }, [requestPixelData]);
 
   useEffect(() => {
     let active = true;
@@ -148,7 +153,7 @@ export default function AvatarEditor({ userId, profile, onSaved }) {
     const requestCategory = isEmojiRequest ? "emojis" : "accessories";
     const fallbackFileName = isEmojiRequest ? "emoji" : "acessorio";
 
-    if (!requestTitle.trim() || !requestImage) {
+    if (!requestTitle.trim() || !requestPixelData) {
       setShopMessage(isEmojiRequest ? "Informe um nome e desenhe o emoji." : "Informe um nome e desenhe o item.");
       return;
     }
@@ -160,7 +165,7 @@ export default function AvatarEditor({ userId, profile, onSaved }) {
         profile,
         title: requestTitle,
         description: requestDescription,
-        imageDataUrl: requestImage,
+        pixelData: requestPixelData,
         fileName: `${requestTitle.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_") || fallbackFileName}.png`,
         category: requestCategory
       });
@@ -172,7 +177,7 @@ export default function AvatarEditor({ userId, profile, onSaved }) {
 
       setRequestTitle("");
       setRequestDescription("");
-      setRequestImage(null);
+      setRequestPixelData(null);
       setClearDraftToken((current) => current + 1);
       await onSaved?.();
       setShopMessage(isEmojiRequest ? "Emoji enviado para avaliacao do professor." : "Criacao enviada para avaliacao do professor.");
@@ -304,7 +309,7 @@ export default function AvatarEditor({ userId, profile, onSaved }) {
                     : `Custa ${creationPrice} moedas. Desenhe por cima do guia; o professor define se vira base, roupa ou outro item.`}
                 </span>
               </div>
-              {requestImage && <img src={requestImage} alt={requestType === "emoji" ? "Previa do emoji criado" : "Previa do acessorio criado"} />}
+              {requestPreviewSrc && <img src={requestPreviewSrc} alt={requestType === "emoji" ? "Previa do emoji criado" : "Previa do acessorio criado"} />}
             </div>
             <div className="creation-type-toggle" role="group" aria-label="Tipo de criacao">
               <button
@@ -312,7 +317,7 @@ export default function AvatarEditor({ userId, profile, onSaved }) {
                 className={requestType === "avatarItem" ? "active" : ""}
                 onClick={() => {
                   setRequestType("avatarItem");
-                  setRequestImage(null);
+                  setRequestPixelData(null);
                 }}
               >
                 Item do avatar
@@ -322,7 +327,7 @@ export default function AvatarEditor({ userId, profile, onSaved }) {
                 className={requestType === "emoji" ? "active" : ""}
                 onClick={() => {
                   setRequestType("emoji");
-                  setRequestImage(null);
+                  setRequestPixelData(null);
                 }}
               >
                 Emoji
@@ -330,7 +335,7 @@ export default function AvatarEditor({ userId, profile, onSaved }) {
             </div>
             <PixelAccessoryEditor
               key={requestType}
-              onChange={setRequestImage}
+              onPixelDataChange={setRequestPixelData}
               storageKey={requestType === "emoji" ? EMOJI_DRAFT_STORAGE_KEY : ACCESSORY_DRAFT_STORAGE_KEY}
               clearDraftToken={clearDraftToken}
               showGuide={requestType !== "emoji"}

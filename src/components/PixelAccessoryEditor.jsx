@@ -1,12 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Circle, Eraser, Hand, Minus, PaintBucket, Pencil, Pipette, Square, Trash2 } from "lucide-react";
+import { colorsToPixelData } from "../utils/pixelArt";
 
 const DEFAULT_GRID_SIZE = 128;
 const RESOLUTION_OPTIONS = [32, 64, 128];
-const EXPORT_SIZE = 256;
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 3;
 const ZOOM_STEP = 0.5;
+const OUTPUT_DEBOUNCE_MS = 120;
 const EMPTY_PIXEL = "";
 const PALETTE = [
   "#111827",
@@ -22,26 +23,6 @@ const PALETTE = [
   "#92400e",
   "#94a3b8"
 ];
-
-function pixelsToDataUrl(pixels, gridSize) {
-  const canvas = document.createElement("canvas");
-  canvas.width = EXPORT_SIZE;
-  canvas.height = EXPORT_SIZE;
-  const context = canvas.getContext("2d");
-  context.imageSmoothingEnabled = false;
-  const pixelSize = EXPORT_SIZE / gridSize;
-
-  context.clearRect(0, 0, EXPORT_SIZE, EXPORT_SIZE);
-  pixels.forEach((color, index) => {
-    if (!color) return;
-    const x = index % gridSize;
-    const y = Math.floor(index / gridSize);
-    context.fillStyle = color;
-    context.fillRect(x * pixelSize, y * pixelSize, pixelSize, pixelSize);
-  });
-
-  return canvas.toDataURL("image/png");
-}
 
 function fillPixels(pixels, startIndex, replacementColor, gridSize) {
   const targetColor = pixels[startIndex] || EMPTY_PIXEL;
@@ -203,7 +184,36 @@ function clearPixelDraft(storageKey) {
   }
 }
 
-export default function PixelAccessoryEditor({ onChange, storageKey, clearDraftToken = 0, showGuide = true }) {
+function buildEditorOutput(pixels, gridSize) {
+  if (!pixels.some(Boolean)) {
+    return null;
+  }
+
+  return colorsToPixelData(pixels, gridSize, gridSize);
+}
+
+function drawPixelsOnCanvas(canvas, pixels, gridSize) {
+  const context = canvas?.getContext("2d");
+  if (!context) return;
+
+  const canvasSize = 512;
+  if (canvas.width !== canvasSize) canvas.width = canvasSize;
+  if (canvas.height !== canvasSize) canvas.height = canvasSize;
+
+  context.imageSmoothingEnabled = false;
+  context.clearRect(0, 0, canvasSize, canvasSize);
+
+  const pixelSize = canvasSize / gridSize;
+  pixels.forEach((pixelColor, index) => {
+    if (!pixelColor) return;
+    const x = index % gridSize;
+    const y = Math.floor(index / gridSize);
+    context.fillStyle = pixelColor;
+    context.fillRect(x * pixelSize, y * pixelSize, pixelSize, pixelSize);
+  });
+}
+
+export default function PixelAccessoryEditor({ onPixelDataChange, storageKey, clearDraftToken = 0, showGuide = true }) {
   const restoredDraft = readPixelDraft(storageKey);
   const initialGridSize = restoredDraft?.gridSize || DEFAULT_GRID_SIZE;
   const initialPixels = restoredDraft?.pixels || Array(initialGridSize * initialGridSize).fill(EMPTY_PIXEL);
@@ -214,12 +224,14 @@ export default function PixelAccessoryEditor({ onChange, storageKey, clearDraftT
   const [tool, setTool] = useState("pencil");
   const [drawing, setDrawing] = useState(false);
   const [zoom, setZoom] = useState(1);
-  const canvasRef = useRef(null);
+  const canvasWrapRef = useRef(null);
+  const pixelCanvasRef = useRef(null);
   const scrollRef = useRef(null);
   const pixelsRef = useRef(pixels);
   const lastPaintedIndexRef = useRef(null);
   const shapeStartIndexRef = useRef(null);
   const panStartRef = useRef(null);
+  const outputTimeoutRef = useRef(null);
   const paintedCount = useMemo(() => pixels.filter(Boolean).length, [pixels]);
   const displayPixels = previewPixels || pixels;
   const shapeTools = ["line", "rectangle", "circle"];
@@ -227,11 +239,23 @@ export default function PixelAccessoryEditor({ onChange, storageKey, clearDraftT
 
   useEffect(() => {
     if (restoredDraft?.pixels?.some(Boolean)) {
-      onChange?.(pixelsToDataUrl(restoredDraft.pixels, restoredDraft.gridSize));
+      scheduleEditorOutput(restoredDraft.pixels, restoredDraft.gridSize);
     }
     // The draft should be restored only on the first mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    return () => {
+      if (outputTimeoutRef.current) {
+        window.clearTimeout(outputTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    drawPixelsOnCanvas(pixelCanvasRef.current, displayPixels, gridSize);
+  }, [displayPixels, gridSize]);
 
   useEffect(() => {
     if (!clearDraftToken) return;
@@ -242,14 +266,30 @@ export default function PixelAccessoryEditor({ onChange, storageKey, clearDraftT
     setPixels(emptyPixels);
     setPreviewPixels(null);
     shapeStartIndexRef.current = null;
-    onChange?.(null);
-  }, [clearDraftToken, onChange, storageKey]);
+    clearScheduledOutput();
+    onPixelDataChange?.(null);
+  }, [clearDraftToken, onPixelDataChange, storageKey]);
+
+  function clearScheduledOutput() {
+    if (outputTimeoutRef.current) {
+      window.clearTimeout(outputTimeoutRef.current);
+      outputTimeoutRef.current = null;
+    }
+  }
+
+  function scheduleEditorOutput(nextPixels, activeGridSize = gridSize) {
+    clearScheduledOutput();
+    outputTimeoutRef.current = window.setTimeout(() => {
+      onPixelDataChange?.(buildEditorOutput(nextPixels, activeGridSize));
+      outputTimeoutRef.current = null;
+    }, OUTPUT_DEBOUNCE_MS);
+  }
 
   function updatePixels(nextPixels, activeGridSize = gridSize) {
     pixelsRef.current = nextPixels;
     setPixels(nextPixels);
     writePixelDraft(storageKey, activeGridSize, nextPixels);
-    onChange?.(pixelsToDataUrl(nextPixels, activeGridSize));
+    scheduleEditorOutput(nextPixels, activeGridSize);
   }
 
   function paint(index) {
@@ -273,7 +313,7 @@ export default function PixelAccessoryEditor({ onChange, storageKey, clearDraftT
   }
 
   function getPointerIndex(event) {
-    const bounds = canvasRef.current?.getBoundingClientRect();
+    const bounds = canvasWrapRef.current?.getBoundingClientRect();
     if (!bounds) return -1;
 
     const x = Math.floor(((event.clientX - bounds.left) / bounds.width) * gridSize);
@@ -339,7 +379,8 @@ export default function PixelAccessoryEditor({ onChange, storageKey, clearDraftT
     pixelsRef.current = emptyPixels;
     setPixels(emptyPixels);
     writePixelDraft(storageKey, nextGridSize, emptyPixels);
-    onChange?.(null);
+    clearScheduledOutput();
+    onPixelDataChange?.(null);
   }
 
   function startPan(event) {
@@ -446,7 +487,7 @@ export default function PixelAccessoryEditor({ onChange, storageKey, clearDraftT
 
           <div className="pixel-canvas-scroll" ref={scrollRef}>
             <div
-              ref={canvasRef}
+              ref={canvasWrapRef}
               className={`pixel-canvas-wrap pixel-tool-${tool}`}
               style={{
                 "--pixel-zoom": zoom
@@ -502,18 +543,18 @@ export default function PixelAccessoryEditor({ onChange, storageKey, clearDraftT
               }}
             >
               {showGuide && <img className="pixel-reference-layer" src="/assets/egg-sprites/base/chibi_body.png" alt="" />}
+              <canvas
+                ref={pixelCanvasRef}
+                className="pixel-canvas-layer"
+                aria-hidden="true"
+              />
               <div
-                className="pixel-grid"
+                className="pixel-grid-overlay"
                 style={{
-                  "--pixel-grid-size": gridSize,
-                  gridTemplateColumns: `repeat(${gridSize}, 1fr)`
+                  "--pixel-grid-size": gridSize
                 }}
                 aria-hidden="true"
-              >
-                {displayPixels.map((pixelColor, index) => (
-                  <span key={index} style={{ backgroundColor: pixelColor || "transparent" }} />
-                ))}
-              </div>
+              />
             </div>
           </div>
         </div>

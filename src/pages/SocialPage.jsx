@@ -12,6 +12,7 @@ import {
   sendAvatarInteraction
 } from "../services/socialService";
 import { getEconomyConfig } from "../services/economyService";
+import { getRenderablePixelArtSrc } from "../utils/pixelArt";
 
 function timestampToLabel(value) {
   if (!value) return "Agora";
@@ -29,7 +30,10 @@ function InteractionScene({ currentProfile, target, interaction, selectedEmoji }
   const leftName = interaction?.fromName || currentProfile?.name || "Voce";
   const rightAvatar = interaction?.toAvatar || target?.avatar;
   const rightName = interaction?.toName || target?.name || "Colega";
-  const emojiSrc = interaction?.emojiSrc || selectedEmoji?.src;
+  const emojiSrc = getRenderablePixelArtSrc({
+    pixelData: interaction?.emojiPixelData || selectedEmoji?.pixelData,
+    imageDataUrl: interaction?.emojiSrc || selectedEmoji?.src
+  });
   const emojiLabel = interaction?.emojiLabel || selectedEmoji?.label || "Emoji";
 
   return (
@@ -161,7 +165,12 @@ export default function SocialPage() {
       };
     setSelectedInteraction(interaction);
     setSelectedStudent(otherUser);
-    setSelectedEmoji({ id: interaction.emojiId, label: interaction.emojiLabel, src: interaction.emojiSrc });
+    setSelectedEmoji({
+      id: interaction.emojiId,
+      label: interaction.emojiLabel,
+      pixelData: interaction.emojiPixelData || null,
+      src: interaction.emojiSrc
+    });
 
     if (interaction.status === "unread" && interaction.toUserId === profile.id) {
       await markInteractionRead(interaction.id);

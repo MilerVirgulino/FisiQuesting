@@ -3,8 +3,9 @@ import {
   getDocs,
 } from "firebase/firestore";
 import { db } from "../firebase-init";
+import { getRenderablePixelArtSrc } from "../utils/pixelArt";
 
-const CACHE_KEY = "fisioquest.avatarCatalog.v1";
+const CACHE_KEY = "fisioquest.avatarCatalog.v2";
 const CACHE_TTL_MS = 1000 * 60 * 10;
 
 const categoryDefinitions = [
@@ -87,6 +88,8 @@ function normalizeItem(docId, data) {
     label: data.label || id,
     source,
     src: data.src || "",
+    imageDataUrl: data.imageDataUrl || "",
+    pixelData: data.pixelData || null,
     price: Number(data.price || 0),
     active: data.active !== false,
     defaultItem: Boolean(data.defaultItem),
@@ -125,6 +128,9 @@ function buildCatalog(items) {
 
 export function getItemSrc(item) {
   if (!item || item.source === "svg") return "";
+  if (item.pixelData || item.imageDataUrl || item.src) {
+    return getRenderablePixelArtSrc(item);
+  }
   if (item.src) return item.src;
   if (!item.folder || !item.id) return "";
   return `/assets/egg-sprites/${item.folder}/${item.id}.png`;
@@ -164,7 +170,8 @@ export async function loadAvatarCatalog({ force = false } = {}) {
             label: item.title,
             description: item.description,
             source: "png",
-            src: item.imageDataUrl,
+            imageDataUrl: item.imageDataUrl,
+            pixelData: item.pixelData || null,
             price: item.shopPrice,
             active: true,
             createdFromRequestId: item.id

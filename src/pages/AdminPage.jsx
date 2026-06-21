@@ -23,6 +23,7 @@ import { createMission, deleteMission, listAllMissions, updateMission } from "..
 import { createQuestion, deleteQuestion, listAllQuestions, updateQuestion } from "../services/questionService";
 import { getSocialConfig, saveSocialConfig, socialVisibilityOptions } from "../services/socialService";
 import { defaultEconomyConfig, getEconomyConfig, saveEconomyConfig } from "../services/economyService";
+import { getRenderablePixelArtSrc } from "../utils/pixelArt";
 
 const areas = ["Mecanica", "Termologia", "Optica", "Eletricidade", "Ondulatoria", "Fisica Moderna"];
 const difficulties = ["facil", "medio", "dificil"];
@@ -107,6 +108,14 @@ function buildClassStats(users) {
     avgCoins: group.students ? Math.round(group.coins / group.students) : 0,
     participation: group.students ? Math.round((group.activeStudents / group.students) * 100) : 0
   })).sort((a, b) => a.grade.localeCompare(b.grade) || a.className.localeCompare(b.className));
+}
+
+function getAccessoryPreviewSrc(item) {
+  return getRenderablePixelArtSrc({
+    pixelData: item?.pixelData,
+    imageDataUrl: item?.imageDataUrl,
+    src: item?.src
+  });
 }
 
 function buildAggregateStats(groups) {
@@ -549,8 +558,10 @@ export default function AdminPage() {
   }
 
   function downloadAccessoryRequest(item) {
+    const src = getAccessoryPreviewSrc(item);
+    if (!src) return;
     const link = document.createElement("a");
-    link.href = item.imageDataUrl;
+    link.href = src;
     link.download = item.fileName || `${item.title || "acessorio"}.png`;
     link.click();
   }
@@ -1522,14 +1533,16 @@ export default function AdminPage() {
           </div>
 
           <div className="accessory-request-grid">
-            {accessoryRequests.map((item) => (
+            {accessoryRequests.map((item) => {
+              const previewSrc = getAccessoryPreviewSrc(item);
+              return (
               <article className={`accessory-request-card status-${item.status || "pending"}`} key={item.id}>
                 <div className="accessory-card-top">
                   <span>{item.status || "pending"}</span>
                   <b>{item.grade || "sem serie"} / {item.className || "sem turma"}</b>
                 </div>
                 <div className="accessory-request-image">
-                  {item.imageDataUrl ? <img src={item.imageDataUrl} alt={item.title || "Acessorio criado"} /> : <span>Sem PNG</span>}
+                  {previewSrc ? <img src={previewSrc} alt={item.title || "Acessorio criado"} /> : <span>Sem imagem</span>}
                 </div>
                 <div className="accessory-request-body">
                   <div>
@@ -1625,7 +1638,8 @@ export default function AdminPage() {
                   </div>
                 </div>
               </article>
-            ))}
+              );
+            })}
             {!accessoryRequests.length && <p className="muted">Nenhuma criacao enviada ainda.</p>}
           </div>
         </section>

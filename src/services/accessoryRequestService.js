@@ -10,13 +10,19 @@ import {
   updateDoc
 } from "firebase/firestore";
 import { db } from "../firebase-init";
+import { validatePixelData } from "../utils/pixelArt";
 import { buildAvatarItemFromRequest, clearAvatarCatalogCache } from "./avatarCatalogService";
 import { defaultEconomyConfig, getEconomyConfig } from "./economyService";
 
 export const ACCESSORY_REQUEST_PRICE = defaultEconomyConfig.customCreationPrice;
 export const ACCESSORY_REQUEST_MAX_BYTES = 450 * 1024;
 
-export async function createAccessoryRequest({ userId, profile, title, description, imageDataUrl, fileName, category = "accessories" }) {
+export async function createAccessoryRequest({ userId, profile, title, description, pixelData, fileName, category = "accessories" }) {
+  const pixelValidation = validatePixelData(pixelData);
+  if (!pixelValidation.valid) {
+    throw new Error(pixelValidation.errors.join(" "));
+  }
+
   const userRef = doc(db, "users", userId);
   const requestRef = doc(collection(db, "customAccessoryRequests"));
   const economy = await getEconomyConfig();
@@ -44,7 +50,7 @@ export async function createAccessoryRequest({ userId, profile, title, descripti
       className: profile?.className || "",
       title: String(title || "").trim(),
       description: String(description || "").trim(),
-      imageDataUrl,
+      pixelData,
       fileName: fileName || "accessory.png",
       category,
       pricePaid: requestPrice,

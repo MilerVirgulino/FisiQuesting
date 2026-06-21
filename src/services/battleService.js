@@ -1,4 +1,5 @@
 import { auth, realtimeDb } from "../firebase-init";
+import { onValue, ref } from "firebase/database";
 import battleBalance from "../data/battleBalance.json";
 import { getBattleProfile } from "./avatarStats";
 
@@ -58,23 +59,12 @@ export function getBattleDatabaseUrl() {
 }
 
 export function subscribeRealtimeConnection(callback) {
-  let active = true;
-
-  async function checkConnection() {
-    try {
-      await restRequest(".info/connected");
-      if (active) callback(true);
-    } catch (error) {
-      if (active) callback(false, error);
-    }
-  }
-
-  checkConnection();
-  const intervalId = window.setInterval(checkConnection, 15000);
-  return () => {
-    active = false;
-    window.clearInterval(intervalId);
-  };
+  assertDatabaseConfigured();
+  return onValue(
+    ref(realtimeDb, ".info/connected"),
+    (snapshot) => callback(Boolean(snapshot.val())),
+    (error) => callback(false, error)
+  );
 }
 
 export function getFirebaseErrorMessage(error) {
