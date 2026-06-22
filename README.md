@@ -1,4 +1,4 @@
-# FisioQuest
+# FisiQuest
 
 Aplicacao web gamificada para resolucao de questoes de Fisica, inspirada em apps de aprendizado por XP, niveis e missoes propostas pelo professor.
 

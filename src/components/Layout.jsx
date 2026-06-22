@@ -35,7 +35,7 @@ export default function Layout() {
     <div className="app-shell">
       <header className="topbar">
         <div>
-          <p className="eyebrow">FisioQuest</p>
+          <p className="eyebrow">FisiQuest</p>
           <h1>Treino de Física</h1>
         </div>
         <div className="user-chip">

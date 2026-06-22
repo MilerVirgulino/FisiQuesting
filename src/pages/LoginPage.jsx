@@ -33,7 +33,7 @@ export default function LoginPage() {
   return (
     <main className="auth-page">
       <section className="auth-panel">
-        <p className="eyebrow">FisioQuest</p>
+        <p className="eyebrow">FisiQuest</p>
         <h1>Aprenda Física resolvendo desafios curtos todos os dias.</h1>
         <form onSubmit={handleSubmit} className="auth-form">
           {mode === "register" && (

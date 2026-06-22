@@ -1,4 +1,4 @@
-# FisioQuest: arquitetura atual
+# FisiQuest: arquitetura atual
 
 ## Decisoes tecnicas
 
