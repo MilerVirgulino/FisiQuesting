@@ -26,11 +26,13 @@ import { createQuestion, deleteQuestion, listAllQuestions, updateQuestion } from
 import { getSocialConfig, saveSocialConfig, socialVisibilityOptions } from "../services/socialService";
 import { defaultEconomyConfig, getEconomyConfig, saveEconomyConfig } from "../services/economyService";
 import { getRenderablePixelArtSrc } from "../utils/pixelArt";
+import { getAvatarOptions, loadAvatarCatalog } from "../services/avatarCatalogService";
 
 const areas = ["Mecanica", "Termologia", "Optica", "Eletricidade", "Ondulatoria", "Fisica Moderna"];
 const difficulties = ["facil", "medio", "dificil"];
 const gradeOptions = ["1 ano", "2 ano", "3 ano"];
 const classOptions = ["A", "B", "C", "D", "E"];
+const UNASSIGNED_CLASS_KEY = "__unassigned__";
 
 const initialQuestion = {
   statement: "",
@@ -71,6 +73,7 @@ function buildClassStats(users) {
   const groups = new Map();
   users
     .filter((user) => user.role !== "admin" && user.status === "approved")
+    .filter((user) => user.grade && user.className)
     .forEach((user) => {
       const grade = user.grade || "Sem serie";
       const className = user.className || "Sem turma";
@@ -231,6 +234,7 @@ export default function AdminPage() {
   const [editingAccessoryArt, setEditingAccessoryArt] = useState(null);
   const [editingAccessoryPixelData, setEditingAccessoryPixelData] = useState(null);
   const [savingAccessoryArt, setSavingAccessoryArt] = useState(false);
+  const [adminAvatarCatalog, setAdminAvatarCatalog] = useState(null);
   const [question, setQuestion] = useState(initialQuestion);
   const [mission, setMission] = useState(initialMission);
   const [loadErrors, setLoadErrors] = useState([]);
@@ -249,13 +253,43 @@ export default function AdminPage() {
   const [socialMessage, setSocialMessage] = useState("");
   const [economyConfig, setEconomyConfig] = useState(defaultEconomyConfig);
   const [economyMessage, setEconomyMessage] = useState("");
+  const adminGuideBase = useMemo(
+    () => getAvatarOptions(adminAvatarCatalog, "base").find((option) => option.source !== "svg" && option.src) || null,
+    [adminAvatarCatalog]
+  );
+  const adminGuideBaseSrc = useMemo(() => {
+    if (adminGuideBase?.src) return adminGuideBase.src;
+
+    const listedBaseRequest = accessoryRequests.find((item) => {
+      return item.status === "listed"
+        && (item.shopCategoryKey === "base" || item.category === "base")
+        && (item.pixelData || item.imageDataUrl || item.src);
+    });
+
+    return listedBaseRequest ? getRenderablePixelArtSrc(listedBaseRequest) : "";
+  }, [adminGuideBase, accessoryRequests]);
+  const editingArtUsesGuide = Boolean(
+    editingAccessoryArt
+      && editingAccessoryArt.category !== "emojis"
+      && editingAccessoryArt.category !== "base"
+      && editingAccessoryArt.shopCategoryKey !== "base"
+      && adminGuideBaseSrc
+  );
 
   const classStats = useMemo(() => buildClassStats(users), [users]);
   const pendingStudents = useMemo(
     () => users.filter((user) => user.role !== "admin" && (user.status || "pending") === "pending"),
     [users]
   );
+  const unassignedUsers = useMemo(
+    () => users.filter((user) => {
+      if (user.role === "admin") return true;
+      return user.status === "approved" && (!user.grade || !user.className);
+    }),
+    [users]
+  );
   const isPendingClassView = classFilters.grade === "__pending__";
+  const isUnassignedClassView = classFilters.grade === UNASSIGNED_CLASS_KEY;
   const pendingClassStats = useMemo(
     () => ({
       key: "Alunos pendentes",
@@ -271,22 +305,39 @@ export default function AdminPage() {
     }),
     [pendingStudents]
   );
+  const unassignedClassStats = useMemo(
+    () => ({
+      key: "Sem turma definida",
+      grade: UNASSIGNED_CLASS_KEY,
+      className: "",
+      students: unassignedUsers.length,
+      approvedStudents: unassignedUsers.filter((user) => user.status === "approved" || user.role === "admin").length,
+      solved: unassignedUsers.reduce((total, user) => total + Number(user.solvedCount || 0), 0),
+      correct: unassignedUsers.reduce((total, user) => total + Number(user.correctCount || 0), 0),
+      accuracy: 0,
+      participation: 0,
+      isUnassigned: true
+    }),
+    [unassignedUsers]
+  );
   const selectedClassStats = useMemo(
     () => {
       if (isPendingClassView) return pendingClassStats;
+      if (isUnassignedClassView) return unassignedClassStats;
       return classStats.find((item) => item.grade === classFilters.grade && item.className === classFilters.className) || null;
     },
-    [classStats, classFilters, isPendingClassView, pendingClassStats]
+    [classStats, classFilters, isPendingClassView, isUnassignedClassView, pendingClassStats, unassignedClassStats]
   );
   const classStudents = useMemo(
     () =>
       users
-        .filter((user) => user.role !== "admin")
         .filter((user) => {
           if (isPendingClassView) return (user.status || "pending") === "pending";
+          if (isUnassignedClassView) return user.role === "admin" || (user.status === "approved" && (!user.grade || !user.className));
+          if (user.role === "admin") return false;
           return user.status === "approved" && (!classFilters.grade || user.grade === classFilters.grade);
         })
-        .filter((user) => isPendingClassView || !classFilters.className || user.className === classFilters.className)
+        .filter((user) => isPendingClassView || isUnassignedClassView || !classFilters.className || user.className === classFilters.className)
         .filter((user) => {
           const search = studentSearch.trim().toLowerCase();
           if (!search) return true;
@@ -295,11 +346,11 @@ export default function AdminPage() {
             .some((value) => String(value).toLowerCase().includes(search));
         })
         .sort((a, b) => String(a.name || a.email).localeCompare(String(b.name || b.email))),
-    [users, classFilters, studentSearch, isPendingClassView]
+    [users, classFilters, studentSearch, isPendingClassView, isUnassignedClassView]
   );
   const classMissions = useMemo(
     () => {
-      if (isPendingClassView) return [];
+      if (isPendingClassView || isUnassignedClassView) return [];
       return missions
         .filter((item) => !classFilters.grade || item.targetGrade === classFilters.grade)
         .filter((item) => !classFilters.className || item.targetClass === classFilters.className)
@@ -315,7 +366,7 @@ export default function AdminPage() {
           };
         });
     },
-    [missions, missionAttempts, classFilters, isPendingClassView]
+    [missions, missionAttempts, classFilters, isPendingClassView, isUnassignedClassView]
   );
   const openClassMissions = useMemo(
     () => classMissions.filter((item) => item.status === "open"),
@@ -368,9 +419,10 @@ export default function AdminPage() {
       listMissionAttempts(),
       listAccessoryRequests(),
       getSocialConfig(),
-      getEconomyConfig()
+      getEconomyConfig(),
+      loadAvatarCatalog({ force: true })
     ]);
-    const labels = ["usuarios", "questoes", "missoes", "tentativas", "criacoes", "social", "economia"];
+    const labels = ["usuarios", "questoes", "missoes", "tentativas", "criacoes", "social", "economia", "catalogo"];
     const errors = [];
 
     results.forEach((result, index) => {
@@ -386,6 +438,7 @@ export default function AdminPage() {
       if (index === 4) setAccessoryRequests(result.value);
       if (index === 5) setSocialConfig(result.value);
       if (index === 6) setEconomyConfig(result.value);
+      if (index === 7) setAdminAvatarCatalog(result.value);
     });
 
     setLoadErrors(errors);
@@ -1253,6 +1306,20 @@ export default function AdminPage() {
               <strong>Alunos pendentes</strong>
               <span>{pendingStudents.length} aguardando aprovacao e organizacao de turma</span>
             </button>
+            <button
+              type="button"
+              className={`pending-class-card ${isUnassignedClassView ? "active" : ""}`}
+              onClick={() => {
+                setClassFilters({ grade: UNASSIGNED_CLASS_KEY, className: "" });
+                setEditingUser(null);
+                setRewardingUser(null);
+                setStudentSearch("");
+                setClassMessage("");
+              }}
+            >
+              <strong>Sem turma definida</strong>
+              <span>{unassignedUsers.length} usuario(s), incluindo ADMs, precisam de serie/turma ou revisao</span>
+            </button>
             {classStats.map((group) => {
               const active = classFilters.grade === group.grade && classFilters.className === group.className;
               return (
@@ -1276,7 +1343,7 @@ export default function AdminPage() {
           </div>
 
           {!selectedClassStats && (
-            <p className="muted">Selecione uma turma ou o card de pendentes para gerenciar os alunos.</p>
+            <p className="muted">Selecione uma turma, pendentes ou sem turma definida para gerenciar os usuarios.</p>
           )}
 
           {selectedClassStats && (
@@ -1287,6 +1354,8 @@ export default function AdminPage() {
                   <h4>{selectedClassStats.key}</h4>
                   {selectedClassStats.isPending ? (
                     <span>{selectedClassStats.students} alunos aguardando aprovacao. Edite serie/turma antes de liberar o acesso.</span>
+                  ) : selectedClassStats.isUnassigned ? (
+                    <span>{selectedClassStats.students} usuario(s) sem alocacao completa. Aqui tambem aparecem administradores para revisao.</span>
                   ) : (
                   <span>
                     {selectedClassStats.students} alunos · {selectedClassStats.solved} respostas · {selectedClassStats.accuracy}% acerto · {selectedClassStats.participation}% participacao
@@ -1429,10 +1498,14 @@ export default function AdminPage() {
                                 Premiar
                               </button>
                               <button type="button" onClick={() => approveUser(user.id, {
-                                grade: gradeOptions.includes(user.grade) ? user.grade : selectedClassStats.isPending ? "1 ano" : selectedClassStats.grade,
-                                className: classOptions.includes(user.className) ? user.className : selectedClassStats.isPending ? "A" : selectedClassStats.className
+                                grade: gradeOptions.includes(user.grade)
+                                  ? user.grade
+                                  : selectedClassStats.isPending || selectedClassStats.isUnassigned ? "1 ano" : selectedClassStats.grade,
+                                className: classOptions.includes(user.className)
+                                  ? user.className
+                                  : selectedClassStats.isPending || selectedClassStats.isUnassigned ? "A" : selectedClassStats.className
                               }).then(refresh)}>
-                                Aprovar
+                                {user.status === "approved" ? "Alocar padrao" : "Aprovar"}
                               </button>
                               <button type="button" className="secondary" onClick={() => handlePasswordReset(user)}>
                                 Redefinir senha
@@ -1480,7 +1553,7 @@ export default function AdminPage() {
                   </div>
                 </section>
 
-                {!selectedClassStats.isPending && (
+                {!selectedClassStats.isPending && !selectedClassStats.isUnassigned && (
                 <section className="analytics-panel">
                   <div className="section-heading">
                     <div>
@@ -1611,7 +1684,8 @@ export default function AdminPage() {
                 key={editingAccessoryArt.id}
                 onPixelDataChange={setEditingAccessoryPixelData}
                 storageKey=""
-                showGuide={false}
+                showGuide={editingArtUsesGuide}
+                guideSrc={editingArtUsesGuide ? adminGuideBaseSrc : ""}
                 initialPixelData={editingAccessoryArt.pixelData || null}
               />
               {editingAccessoryArt.duplicatedFromId && (
@@ -1814,6 +1888,16 @@ export default function AdminPage() {
                   onChange={(event) => setEconomyConfig((current) => ({ ...current, emojiSendPrice: event.target.value }))}
                 />
                 <small>Cobrado a cada interacao enviada para um colega.</small>
+              </label>
+              <label>
+                Preco de espaco extra na Vitrine
+                <input
+                  type="number"
+                  min="0"
+                  value={economyConfig.showcaseSlotPrice}
+                  onChange={(event) => setEconomyConfig((current) => ({ ...current, showcaseSlotPrice: event.target.value }))}
+                />
+                <small>Cobrado quando o aluno compra outro manequim permanente.</small>
               </label>
             </div>
             <button type="submit">Salvar economia</button>

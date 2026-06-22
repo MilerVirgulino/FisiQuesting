@@ -70,11 +70,16 @@ service cloud.firestore {
         "correctCount",
         "coins",
         "petCare",
+        "showcaseSlots",
         "ownedAvatarItems",
         "completedMissionIds",
         "avatar",
         "updatedAt"
       ]);
+    }
+
+    function showcaseSlotCount() {
+      return userDoc().data.showcaseSlots is int && userDoc().data.showcaseSlots > 0 ? userDoc().data.showcaseSlots : 1;
     }
 
     match /users/{userId} {
@@ -142,6 +147,78 @@ service cloud.firestore {
       allow update: if isApproved()
         && resource.data.toUserId == request.auth.uid
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["status", "readAt", "updatedAt"]);
+      allow delete: if isAdmin();
+    }
+
+    match /showcaseLooks/{lookId} {
+      allow read: if isAdmin()
+        || (
+          isApproved()
+          && resource.data.status == "published"
+          && resource.data.hidden == false
+        )
+        || (signedIn() && resource.data.ownerId == request.auth.uid);
+      allow create: if isApproved()
+        && request.resource.data.ownerId == request.auth.uid
+        && request.resource.data.slotIndex is number
+        && request.resource.data.slotIndex >= 0
+        && request.resource.data.slotIndex < 8
+        && request.resource.data.status in ["draft", "published"]
+        && request.resource.data.hidden == false
+        && request.resource.data.fotonizationCount == 0;
+      allow update: if isAdmin()
+        || (
+          isApproved()
+          && resource.data.ownerId == request.auth.uid
+          && request.resource.data.ownerId == resource.data.ownerId
+          && request.resource.data.slotIndex == resource.data.slotIndex
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            "ownerNickname",
+            "ownerRole",
+            "ownerGrade",
+            "ownerClassName",
+            "name",
+            "status",
+            "hidden",
+            "equippedItems",
+            "itemCredits",
+            "updatedAt"
+          ])
+          && request.resource.data.status in ["draft", "published"]
+          && request.resource.data.hidden == false
+        )
+        || (
+          isApproved()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["fotonizationCount", "updatedAt"])
+          && resource.data.status == "published"
+          && resource.data.hidden == false
+          && request.resource.data.fotonizationCount >= 0
+        );
+      allow delete: if isAdmin() || (signedIn() && resource.data.ownerId == request.auth.uid);
+
+      match /fotonizations/{userId} {
+        allow read: if isAdmin() || isApproved();
+        allow create: if isApproved()
+          && request.auth.uid == userId
+          && get(/databases/$(database)/documents/showcaseLooks/$(lookId)).data.ownerId != request.auth.uid
+          && request.resource.data.userId == request.auth.uid;
+        allow delete: if isApproved() && request.auth.uid == userId;
+        allow update: if false;
+      }
+    }
+
+    match /showcaseNotifications/{notificationId} {
+      allow read: if isAdmin() || (signedIn() && resource.data.toUserId == request.auth.uid);
+      allow create: if isApproved()
+        && request.resource.data.fromUserId == request.auth.uid
+        && request.resource.data.toUserId is string
+        && request.resource.data.type == "fotonization";
+      allow update: if isAdmin()
+        || (
+          isApproved()
+          && resource.data.toUserId == request.auth.uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["status", "readAt", "updatedAt"])
+        );
       allow delete: if isAdmin();
     }
 

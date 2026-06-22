@@ -1,10 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { CheckCircle2, Clock, Coins, Rocket, Shuffle, Sparkles, Target, Trophy } from "lucide-react";
 import QuestionCard from "../components/QuestionCard.jsx";
+import AdminClassViewControl from "../components/AdminClassViewControl.jsx";
 import { getQuestionsByIds } from "../services/questionService";
 import { listOpenMissionsForClass } from "../services/missionService";
 import { listSubmittedMissionAttemptIds, submitMissionAttempt } from "../services/progressService";
 import { useAuth } from "../services/authService.jsx";
+import { getEffectiveClassProfile, readAdminClassView } from "../services/adminViewService";
 import { buildShuffledQuestion, seededShuffle } from "../utils/shuffle";
 
 function missionPeriodLabel(mission) {
@@ -40,21 +42,23 @@ export default function QuestionsPage() {
   const [missionLoading, setMissionLoading] = useState(false);
   const [submittingMission, setSubmittingMission] = useState(false);
   const [loadError, setLoadError] = useState("");
+  const [adminClassView, setAdminClassView] = useState(() => readAdminClassView());
   const isAdmin = profile?.role === "admin";
+  const classProfile = getEffectiveClassProfile(profile, adminClassView);
 
   const classLabel = useMemo(() => {
-    if (!profile?.grade || !profile?.className) return "turma nao definida";
-    return `${profile.grade} - ${profile.className}`;
-  }, [profile]);
+    if (!classProfile?.grade || !classProfile?.className) return "turma nao definida";
+    return `${classProfile.grade} - ${classProfile.className}`;
+  }, [classProfile]);
 
   const loadMissions = useCallback(async () => {
     setLoading(true);
     setLoadError("");
     try {
       const openMissions = await listOpenMissionsForClass({
-        grade: profile?.grade,
-        className: profile?.className,
-        includeAllOpen: isAdmin
+        grade: classProfile?.grade,
+        className: classProfile?.className,
+        includeAllOpen: false
       });
       let submittedMissionIds = new Set();
 
@@ -78,7 +82,7 @@ export default function QuestionsPage() {
     } finally {
       setLoading(false);
     }
-  }, [firebaseUser?.uid, profile?.grade, profile?.className, profile?.completedMissionIds, isAdmin]);
+  }, [firebaseUser?.uid, classProfile?.grade, classProfile?.className, profile?.completedMissionIds, isAdmin]);
 
   useEffect(() => {
     loadMissions();
@@ -311,6 +315,17 @@ export default function QuestionsPage() {
         <Rocket size={42} />
       </div>
 
+      {isAdmin && (
+        <AdminClassViewControl
+          value={adminClassView}
+          onChange={(next) => {
+            setAdminClassView(next);
+            setSelectedMission(null);
+          }}
+          label="ADM testando como aluno desta turma"
+        />
+      )}
+
       {loading && <p className="muted">Carregando missoes abertas...</p>}
 
       {loadError && (
@@ -322,7 +337,7 @@ export default function QuestionsPage() {
         </section>
       )}
 
-      {!loading && !loadError && (!profile?.grade || !profile?.className) && !isAdmin && (
+      {!loading && !loadError && (!classProfile?.grade || !classProfile?.className) && !isAdmin && (
         <section className="empty-state">
           <Target size={36} />
           <h3>Sua turma ainda nao esta definida.</h3>
@@ -330,7 +345,7 @@ export default function QuestionsPage() {
         </section>
       )}
 
-      {!loading && !loadError && missions.length === 0 && (isAdmin || (profile?.grade && profile?.className)) && (
+      {!loading && !loadError && missions.length === 0 && (isAdmin || (classProfile?.grade && classProfile?.className)) && (
         <section className="empty-state">
           <Target size={36} />
           <h3>Nenhuma missao aberta para sua turma.</h3>

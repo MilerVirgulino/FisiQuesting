@@ -76,6 +76,7 @@ async function register({ name, email, password }) {
     status: "pending",
     totalXp: 0,
     coins: 0,
+    showcaseSlots: 1,
     petCare: {
       energy: 100,
       updatedAt: serverTimestamp()

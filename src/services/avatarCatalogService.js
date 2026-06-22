@@ -5,9 +5,9 @@ import {
   where,
 } from "firebase/firestore";
 import { db } from "../firebase-init";
-import { getRenderablePixelArtSrc } from "../utils/pixelArt";
+import { colorsToPixelData, getRenderablePixelArtSrc } from "../utils/pixelArt";
 
-const CACHE_KEY = "fisioquest.avatarCatalog.v2";
+const CACHE_KEY = "fisioquest.avatarCatalog.v3";
 const CACHE_TTL_MS = 1000 * 60 * 10;
 
 const categoryDefinitions = [
@@ -22,6 +22,67 @@ const categoryDefinitions = [
   { key: "emojis", label: "Emojis", folder: "emojis", defaultId: "emojis_none", visible: false, shopVisible: true }
 ];
 
+function makeFotonizePixelData() {
+  const size = 32;
+  const pixels = Array(size * size).fill("");
+
+  function paintRect(x, y, width, height, color) {
+    for (let row = y; row < y + height; row += 1) {
+      for (let col = x; col < x + width; col += 1) {
+        if (row >= 0 && row < size && col >= 0 && col < size) {
+          pixels[row * size + col] = color;
+        }
+      }
+    }
+  }
+
+  function paintPoints(points, color) {
+    points.forEach(([x, y]) => {
+      if (y >= 0 && y < size && x >= 0 && x < size) {
+        pixels[y * size + x] = color;
+      }
+    });
+  }
+
+  const outline = "#3b2a16";
+  const skin = "#ffd36b";
+  const shadow = "#f3a43a";
+  const shine = "#fff1a8";
+  const spark = "#fff35c";
+  const sparkShadow = "#f59e0b";
+
+  paintRect(8, 14, 5, 11, outline);
+  paintRect(9, 15, 3, 9, skin);
+  paintRect(6, 15, 4, 10, outline);
+  paintRect(7, 16, 2, 8, "#47c5ff");
+  paintRect(9, 23, 3, 2, shadow);
+
+  paintRect(12, 13, 11, 11, outline);
+  paintRect(13, 14, 9, 9, skin);
+  paintRect(14, 21, 8, 2, shadow);
+  paintRect(14, 15, 6, 2, shine);
+
+  paintRect(15, 9, 7, 6, outline);
+  paintRect(16, 8, 5, 6, outline);
+  paintRect(17, 7, 3, 7, outline);
+  paintRect(17, 9, 4, 5, skin);
+  paintRect(18, 8, 2, 2, shine);
+
+  paintRect(22, 14, 4, 3, outline);
+  paintRect(22, 18, 4, 3, outline);
+  paintRect(22, 22, 3, 3, outline);
+  paintRect(22, 15, 3, 1, skin);
+  paintRect(22, 19, 3, 1, skin);
+  paintRect(22, 23, 2, 1, skin);
+
+  paintPoints([[5, 7], [5, 9], [4, 8], [6, 8]], spark);
+  paintPoints([[26, 6], [26, 8], [25, 7], [27, 7]], spark);
+  paintPoints([[27, 25], [27, 27], [26, 26], [28, 26]], spark);
+  paintPoints([[4, 8], [25, 7], [26, 26]], sparkShadow);
+
+  return colorsToPixelData(pixels, size, size);
+}
+
 const defaultItems = [
   { id: "hair_none", categoryKey: "hair", label: "Nenhum", source: "svg", price: 0, defaultItem: true, active: true },
   { id: "shirt_none", categoryKey: "shirts", label: "Nenhuma", source: "svg", price: 0, defaultItem: true, active: true },
@@ -30,7 +91,17 @@ const defaultItems = [
   { id: "accessories_none", categoryKey: "accessories", label: "Nenhum", source: "svg", price: 0, defaultItem: true, active: true },
   { id: "pants_none", categoryKey: "pants", label: "Nenhuma", source: "svg", price: 0, defaultItem: true, active: true },
   { id: "pets_none", categoryKey: "pets", label: "Nenhum", source: "svg", price: 0, defaultItem: true, active: true },
-  { id: "emojis_none", categoryKey: "emojis", label: "Nenhum", source: "svg", price: 0, defaultItem: true, active: true }
+  { id: "emojis_none", categoryKey: "emojis", label: "Nenhum", source: "svg", price: 0, defaultItem: true, active: true },
+  {
+    id: "emojis_fotonizar_placeholder",
+    categoryKey: "emojis",
+    label: "Joinha brilhante",
+    source: "png",
+    price: 0,
+    defaultItem: true,
+    active: true,
+    pixelData: makeFotonizePixelData()
+  }
 ];
 
 let memoryCatalog = null;
@@ -94,7 +165,9 @@ function normalizeItem(docId, data) {
     price: Number(data.price || 0),
     active: data.active !== false,
     defaultItem: Boolean(data.defaultItem),
-    createdFromRequestId: data.createdFromRequestId || ""
+    createdFromRequestId: data.createdFromRequestId || "",
+    creatorId: data.creatorId || data.authorId || data.userId || "",
+    creatorName: data.creatorName || data.authorName || data.userName || data.ownerNickname || ""
   };
 }
 
@@ -173,7 +246,9 @@ export async function loadAvatarCatalog({ force = false } = {}) {
             pixelData: item.pixelData || null,
             price: item.shopPrice,
             active: true,
-            createdFromRequestId: item.id
+            createdFromRequestId: item.id,
+            userId: item.userId,
+            userName: item.userName
           }))
         : [];
       const allItems = [...firebaseItems, ...listedRequests]

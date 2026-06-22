@@ -4,7 +4,8 @@ import { db } from "../firebase-init";
 export const defaultEconomyConfig = {
   avatarItemPrice: 25,
   customCreationPrice: 150,
-  emojiSendPrice: 5
+  emojiSendPrice: 5,
+  showcaseSlotPrice: 200
 };
 
 export async function getEconomyConfig() {
@@ -19,6 +20,7 @@ export async function saveEconomyConfig(config) {
       avatarItemPrice: Number(config.avatarItemPrice || 0),
       customCreationPrice: Number(config.customCreationPrice || 0),
       emojiSendPrice: Number(config.emojiSendPrice || 0),
+      showcaseSlotPrice: Number(config.showcaseSlotPrice || 0),
       updatedAt: serverTimestamp()
     },
     { merge: true }
