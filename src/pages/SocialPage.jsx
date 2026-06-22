@@ -1,7 +1,9 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Bell, Eye, EyeOff, Plus, Search, Send, ShoppingBag, Sparkles, Trash2, UsersRound } from "lucide-react";
+import AvatarInventoryPicker from "../components/AvatarInventoryPicker.jsx";
 import AvatarPreview from "../components/AvatarPreview.jsx";
 import AdminClassViewControl from "../components/AdminClassViewControl.jsx";
+import ChoicePills from "../components/ChoicePills.jsx";
 import { useAuth } from "../services/authService.jsx";
 import {
   filterStudentsBySocialScope,
@@ -18,7 +20,6 @@ import {
   buyShowcaseSlot,
   deleteShowcaseLook,
   FREE_SHOWCASE_SLOTS,
-  getOwnedOptionsByCategory,
   getShowcaseSlotCount,
   listMyFotonizationIds,
   listMyShowcaseLooks,
@@ -30,7 +31,7 @@ import {
   setShowcaseLookStatus,
   toggleFotonization
 } from "../services/showcaseService";
-import { defaultAvatar, getAvatarOption, loadAvatarCatalog } from "../services/avatarCatalogService";
+import { defaultAvatar, getAvatarCategories, getAvatarOption, loadAvatarCatalog } from "../services/avatarCatalogService";
 import { getEffectiveClassProfile, readAdminClassView } from "../services/adminViewService";
 
 function timestampToLabel(value) {
@@ -97,7 +98,7 @@ function ShowcaseLookEditor({ profile, catalog, look, slotIndex, onCancel, onSav
   }));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const ownedSections = useMemo(() => getOwnedOptionsByCategory(profile, catalog), [profile, catalog]);
+  const avatarCategories = useMemo(() => getAvatarCategories(catalog), [catalog]);
 
   async function handleSave(event) {
     event.preventDefault();
@@ -132,29 +133,23 @@ function ShowcaseLookEditor({ profile, catalog, look, slotIndex, onCancel, onSav
           Nome do look
           <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Ex.: Look eletrizante" />
         </label>
-        <label>
-          Visibilidade
-          <select value={status} onChange={(event) => setStatus(event.target.value)}>
-            <option value="draft">Rascunho oculto</option>
-            <option value="published">Publicado</option>
-          </select>
-        </label>
-        <div className="showcase-item-select-grid">
-          {ownedSections.map(({ category, options }) => (
-            <label key={category.key}>
-              {category.label}
-              <select
-                value={equippedItems[category.key] || ""}
-                onChange={(event) => setEquippedItems((current) => ({ ...current, [category.key]: event.target.value }))}
-                disabled={!options.length}
-              >
-                {options.map((option) => (
-                  <option value={option.id} key={option.id}>{option.label}</option>
-                ))}
-              </select>
-            </label>
-          ))}
-        </div>
+        <ChoicePills
+          label="Visibilidade"
+          value={status}
+          options={[
+            { value: "draft", label: "Rascunho oculto" },
+            { value: "published", label: "Publicado" }
+          ]}
+          onChange={setStatus}
+          className="blocky"
+        />
+        <AvatarInventoryPicker
+          categories={avatarCategories}
+          catalog={catalog}
+          profile={profile}
+          avatar={equippedItems}
+          onChange={(categoryKey, itemId) => setEquippedItems((current) => ({ ...current, [categoryKey]: itemId }))}
+        />
         <div className="row-actions">
           <button type="submit" disabled={saving}>{saving ? "Salvando..." : "Salvar look"}</button>
           <button type="button" className="secondary" onClick={onCancel}>Cancelar</button>
@@ -571,14 +566,20 @@ export default function SocialPage() {
                   onChange={(event) => setFilters({ ...filters, search: event.target.value })}
                   placeholder="Buscar aluno"
                 />
-                <select value={filters.grade} onChange={(event) => setFilters({ ...filters, grade: event.target.value })}>
-                  <option value="">Serie</option>
-                  {filterGrades.map((grade) => <option value={grade} key={grade}>{grade}</option>)}
-                </select>
-                <select value={filters.className} onChange={(event) => setFilters({ ...filters, className: event.target.value })}>
-                  <option value="">Turma</option>
-                  {filterClasses.map((className) => <option value={className} key={className}>{className}</option>)}
-                </select>
+                <ChoicePills
+                  label="Serie"
+                  value={filters.grade}
+                  options={[{ value: "", label: "Todas" }, ...filterGrades.map((grade) => ({ value: grade, label: grade }))]}
+                  onChange={(grade) => setFilters({ ...filters, grade })}
+                  className="compact"
+                />
+                <ChoicePills
+                  label="Turma"
+                  value={filters.className}
+                  options={[{ value: "", label: "Todas" }, ...filterClasses.map((className) => ({ value: className, label: className }))]}
+                  onChange={(className) => setFilters({ ...filters, className })}
+                  className="compact"
+                />
               </div>
 
               <div className="social-roster-grid">

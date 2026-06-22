@@ -43,6 +43,7 @@ O documento do usuario salva escolhas simples:
     mouths: "mouth_none",
     accessories: "accessories_none",
     pants: "pants_none",
+    shoes: "shoes_none",
     pets: "pets_none"
   }
 }

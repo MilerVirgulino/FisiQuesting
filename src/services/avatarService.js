@@ -13,6 +13,7 @@ export function saveUserAvatar(userId, avatar) {
       mouths: avatar.mouths || avatar.mouth || "mouth_none",
       shirts: avatar.shirts || avatar.outfit || "shirt_none",
       pants: avatar.pants || "pants_none",
+      shoes: avatar.shoes || "shoes_none",
       hair: avatar.hair || null,
       accessories: avatar.accessories || "accessories_none",
       pets: avatar.pets || "pets_none",

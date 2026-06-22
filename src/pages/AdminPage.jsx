@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Activity, BarChart3, BookOpen, CircleDollarSign, Download, GripVertical, Lock, Palette, RadioTower, Share2, Target, Trash2, TrendingUp, Trophy, Users } from "lucide-react";
 import AvatarPreview from "../components/AvatarPreview.jsx";
+import ChoicePills from "../components/ChoicePills.jsx";
 import PixelAccessoryEditor from "../components/PixelAccessoryEditor.jsx";
 import {
   approveAccessoryRequestToShop,
@@ -32,7 +33,54 @@ const areas = ["Mecanica", "Termologia", "Optica", "Eletricidade", "Ondulatoria"
 const difficulties = ["facil", "medio", "dificil"];
 const gradeOptions = ["1 ano", "2 ano", "3 ano"];
 const classOptions = ["A", "B", "C", "D", "E"];
+const allGradeOptions = [{ value: "", label: "Todas" }, ...gradeOptions.map((grade) => ({ value: grade, label: grade }))];
+const allClassOptions = [{ value: "", label: "Todas" }, ...classOptions.map((className) => ({ value: className, label: className }))];
+const areaOptions = areas.map((area) => ({ value: area, label: area }));
+const areaFilterOptions = [{ value: "", label: "Todos" }, ...areaOptions];
+const difficultyOptions = difficulties.map((difficulty) => ({ value: difficulty, label: difficulty }));
+const difficultyFilterOptions = [{ value: "", label: "Todos" }, ...difficultyOptions];
+const missionStatusOptions = [
+  { value: "open", label: "Aberta" },
+  { value: "closed", label: "Fechada" }
+];
+const questionStatusOptions = [
+  { value: "active", label: "Ativa" },
+  { value: "inactive", label: "Inativa" }
+];
+const userStatusOptions = [
+  { value: "pending", label: "Pendente" },
+  { value: "approved", label: "Aprovado" },
+  { value: "rejected", label: "Rejeitado" }
+];
+const accessoryStatusOptions = [
+  { value: "pending", label: "Pendente" },
+  { value: "voting", label: "Votacao" },
+  { value: "approved", label: "Aprovado" },
+  { value: "listed", label: "Na loja" },
+  { value: "rejected", label: "Rejeitado" }
+];
 const UNASSIGNED_CLASS_KEY = "__unassigned__";
+const creationStatusFilters = [
+  { value: "review", label: "Para aceitar" },
+  { value: "all", label: "Todos" },
+  { value: "pending", label: "Pendentes" },
+  { value: "voting", label: "Em votacao" },
+  { value: "approved", label: "Aprovados" },
+  { value: "listed", label: "Na loja" },
+  { value: "rejected", label: "Rejeitados" }
+];
+const avatarItemCategoryOptions = [
+  { value: "base", label: "Base" },
+  { value: "hair", label: "Cabelo" },
+  { value: "shirts", label: "Camisa" },
+  { value: "eyes", label: "Olhos" },
+  { value: "mouths", label: "Boca" },
+  { value: "accessories", label: "Acessorio" },
+  { value: "pants", label: "Calca" },
+  { value: "shoes", label: "Sapatos" },
+  { value: "pets", label: "Pet" },
+  { value: "emojis", label: "Emoji" }
+];
 
 const initialQuestion = {
   statement: "",
@@ -231,6 +279,7 @@ export default function AdminPage() {
   const [accessoryShopPrices, setAccessoryShopPrices] = useState({});
   const [accessoryShopCategories, setAccessoryShopCategories] = useState({});
   const [accessoryTitles, setAccessoryTitles] = useState({});
+  const [creationFilters, setCreationFilters] = useState({ status: "review", category: "" });
   const [editingAccessoryArt, setEditingAccessoryArt] = useState(null);
   const [editingAccessoryPixelData, setEditingAccessoryPixelData] = useState(null);
   const [savingAccessoryArt, setSavingAccessoryArt] = useState(false);
@@ -410,6 +459,22 @@ export default function AdminPage() {
     () => mission.questionIds.map((id) => questions.find((item) => item.id === id)).filter(Boolean),
     [mission.questionIds, questions]
   );
+  const creationSummary = useMemo(() => accessoryRequests.reduce((summary, item) => {
+    const status = item.status || "pending";
+    return {
+      ...summary,
+      [status]: Number(summary[status] || 0) + 1
+    };
+  }, {}), [accessoryRequests]);
+  const filteredAccessoryRequests = useMemo(() => accessoryRequests.filter((item) => {
+    const status = item.status || "pending";
+    const category = accessoryShopCategories[item.id] || item.shopCategoryKey || item.category || "accessories";
+    const statusMatches = creationFilters.status === "all"
+      || (creationFilters.status === "review" && ["pending", "voting"].includes(status))
+      || status === creationFilters.status;
+    const categoryMatches = !creationFilters.category || category === creationFilters.category;
+    return statusMatches && categoryMatches;
+  }), [accessoryRequests, accessoryShopCategories, creationFilters]);
 
   async function refresh() {
     const results = await Promise.allSettled([
@@ -782,26 +847,8 @@ export default function AdminPage() {
                     required
                   />
                 </label>
-                <label>
-                  Serie
-                  <select
-                    value={mission.targetGrade}
-                    onChange={(event) => setMission({ ...mission, targetGrade: event.target.value })}
-                    required
-                  >
-                    {gradeOptions.map((grade) => <option value={grade} key={grade}>{grade}</option>)}
-                  </select>
-                </label>
-                <label>
-                  Turma
-                  <select
-                    value={mission.targetClass}
-                    onChange={(event) => setMission({ ...mission, targetClass: event.target.value })}
-                    required
-                  >
-                    {classOptions.map((className) => <option value={className} key={className}>{className}</option>)}
-                  </select>
-                </label>
+                <ChoicePills label="Serie" value={mission.targetGrade} options={gradeOptions} onChange={(targetGrade) => setMission({ ...mission, targetGrade })} className="compact" />
+                <ChoicePills label="Turma" value={mission.targetClass} options={classOptions} onChange={(targetClass) => setMission({ ...mission, targetClass })} className="compact" />
                 <label>
                   XP bonus
                   <input
@@ -829,13 +876,7 @@ export default function AdminPage() {
                     onChange={(event) => setMission({ ...mission, targetMinutes: event.target.value })}
                   />
                 </label>
-                <label>
-                  Status
-                  <select value={mission.status} onChange={(event) => setMission({ ...mission, status: event.target.value })}>
-                    <option value="open">Aberta</option>
-                    <option value="closed">Fechada</option>
-                  </select>
-                </label>
+                <ChoicePills label="Status" value={mission.status} options={missionStatusOptions} onChange={(status) => setMission({ ...mission, status })} className="compact blocky" />
                 <label>
                   Inicio
                   <input
@@ -861,26 +902,8 @@ export default function AdminPage() {
                     <span>{activeQuestions.length} ativas</span>
                   </div>
                   <div className="question-filters">
-                    <label>
-                      Assunto
-                      <select
-                        value={questionFilters.area}
-                        onChange={(event) => setQuestionFilters({ ...questionFilters, area: event.target.value })}
-                      >
-                        <option value="">Todos</option>
-                        {areas.map((area) => <option value={area} key={area}>{area}</option>)}
-                      </select>
-                    </label>
-                    <label>
-                      Nivel
-                      <select
-                        value={questionFilters.difficulty}
-                        onChange={(event) => setQuestionFilters({ ...questionFilters, difficulty: event.target.value })}
-                      >
-                        <option value="">Todos</option>
-                        {difficulties.map((difficulty) => <option value={difficulty} key={difficulty}>{difficulty}</option>)}
-                      </select>
-                    </label>
+                    <ChoicePills label="Assunto" value={questionFilters.area} options={areaFilterOptions} onChange={(area) => setQuestionFilters({ ...questionFilters, area })} className="compact" />
+                    <ChoicePills label="Nivel" value={questionFilters.difficulty} options={difficultyFilterOptions} onChange={(difficulty) => setQuestionFilters({ ...questionFilters, difficulty })} className="compact" />
                   </div>
                   <div className="draggable-list">
                     {activeQuestions.map((item) => (
@@ -970,18 +993,8 @@ export default function AdminPage() {
                         <input value={editingMission.description} onChange={(event) => setEditingMission({ ...editingMission, description: event.target.value })} required />
                       </label>
                       <div className="form-grid">
-                        <label>
-                          Serie
-                          <select value={editingMission.targetGrade} onChange={(event) => setEditingMission({ ...editingMission, targetGrade: event.target.value })}>
-                            {gradeOptions.map((grade) => <option value={grade} key={grade}>{grade}</option>)}
-                          </select>
-                        </label>
-                        <label>
-                          Turma
-                          <select value={editingMission.targetClass} onChange={(event) => setEditingMission({ ...editingMission, targetClass: event.target.value })}>
-                            {classOptions.map((className) => <option value={className} key={className}>{className}</option>)}
-                          </select>
-                        </label>
+                        <ChoicePills label="Serie" value={editingMission.targetGrade} options={gradeOptions} onChange={(targetGrade) => setEditingMission({ ...editingMission, targetGrade })} className="compact" />
+                        <ChoicePills label="Turma" value={editingMission.targetClass} options={classOptions} onChange={(targetClass) => setEditingMission({ ...editingMission, targetClass })} className="compact" />
                         <label>
                           XP bonus
                           <input type="number" min="0" value={editingMission.rewardXp} onChange={(event) => setEditingMission({ ...editingMission, rewardXp: event.target.value })} />
@@ -1002,13 +1015,7 @@ export default function AdminPage() {
                           Finalizacao
                           <input type="date" value={editingMission.endsAt} onChange={(event) => setEditingMission({ ...editingMission, endsAt: event.target.value })} />
                         </label>
-                        <label>
-                          Status
-                          <select value={editingMission.status} onChange={(event) => setEditingMission({ ...editingMission, status: event.target.value })}>
-                            <option value="open">Aberta</option>
-                            <option value="closed">Fechada</option>
-                          </select>
-                        </label>
+                        <ChoicePills label="Status" value={editingMission.status} options={missionStatusOptions} onChange={(status) => setEditingMission({ ...editingMission, status })} className="compact blocky" />
                       </div>
                       <div className="row-actions">
                         <button type="submit">Salvar missao</button>
@@ -1108,18 +1115,8 @@ export default function AdminPage() {
                 </div>
               ))}
               <div className="form-grid">
-                <label>
-                  Area
-                  <select value={question.area} onChange={(event) => setQuestion({ ...question, area: event.target.value })}>
-                    {areas.map((area) => <option key={area}>{area}</option>)}
-                  </select>
-                </label>
-                <label>
-                  Dificuldade
-                  <select value={question.difficulty} onChange={(event) => setQuestion({ ...question, difficulty: event.target.value })}>
-                    {difficulties.map((difficulty) => <option key={difficulty}>{difficulty}</option>)}
-                  </select>
-                </label>
+                <ChoicePills label="Area" value={question.area} options={areaOptions} onChange={(area) => setQuestion({ ...question, area })} className="compact" />
+                <ChoicePills label="Dificuldade" value={question.difficulty} options={difficultyOptions} onChange={(difficulty) => setQuestion({ ...question, difficulty })} className="compact" />
                 <label>
                   XP
                   <input type="number" min="0" value={question.xp} onChange={(event) => setQuestion({ ...question, xp: event.target.value })} />
@@ -1142,26 +1139,8 @@ export default function AdminPage() {
               <span>{filteredQuestions.length} encontradas</span>
             </div>
             <div className="question-filters wide">
-              <label>
-                Assunto
-                <select
-                  value={questionFilters.area}
-                  onChange={(event) => setQuestionFilters({ ...questionFilters, area: event.target.value })}
-                >
-                  <option value="">Todos</option>
-                  {areas.map((area) => <option value={area} key={area}>{area}</option>)}
-                </select>
-              </label>
-              <label>
-                Nivel
-                <select
-                  value={questionFilters.difficulty}
-                  onChange={(event) => setQuestionFilters({ ...questionFilters, difficulty: event.target.value })}
-                >
-                  <option value="">Todos</option>
-                  {difficulties.map((difficulty) => <option value={difficulty} key={difficulty}>{difficulty}</option>)}
-                </select>
-              </label>
+              <ChoicePills label="Assunto" value={questionFilters.area} options={areaFilterOptions} onChange={(area) => setQuestionFilters({ ...questionFilters, area })} className="compact" />
+              <ChoicePills label="Nivel" value={questionFilters.difficulty} options={difficultyFilterOptions} onChange={(difficulty) => setQuestionFilters({ ...questionFilters, difficulty })} className="compact" />
             </div>
             <div className="question-admin-list">
               {filteredQuestions.map((item) => (
@@ -1201,24 +1180,8 @@ export default function AdminPage() {
                         </div>
                       ))}
                       <div className="form-grid">
-                        <label>
-                          Area
-                          <select
-                            value={editingQuestion.area}
-                            onChange={(event) => setEditingQuestion({ ...editingQuestion, area: event.target.value })}
-                          >
-                            {areas.map((area) => <option key={area}>{area}</option>)}
-                          </select>
-                        </label>
-                        <label>
-                          Dificuldade
-                          <select
-                            value={editingQuestion.difficulty}
-                            onChange={(event) => setEditingQuestion({ ...editingQuestion, difficulty: event.target.value })}
-                          >
-                            {difficulties.map((difficulty) => <option key={difficulty}>{difficulty}</option>)}
-                          </select>
-                        </label>
+                        <ChoicePills label="Area" value={editingQuestion.area} options={areaOptions} onChange={(area) => setEditingQuestion({ ...editingQuestion, area })} className="compact" />
+                        <ChoicePills label="Dificuldade" value={editingQuestion.difficulty} options={difficultyOptions} onChange={(difficulty) => setEditingQuestion({ ...editingQuestion, difficulty })} className="compact" />
                         <label>
                           XP
                           <input
@@ -1228,16 +1191,13 @@ export default function AdminPage() {
                             onChange={(event) => setEditingQuestion({ ...editingQuestion, xp: event.target.value })}
                           />
                         </label>
-                        <label>
-                          Status
-                          <select
-                            value={editingQuestion.active ? "active" : "inactive"}
-                            onChange={(event) => setEditingQuestion({ ...editingQuestion, active: event.target.value === "active" })}
-                          >
-                            <option value="active">Ativa</option>
-                            <option value="inactive">Inativa</option>
-                          </select>
-                        </label>
+                        <ChoicePills
+                          label="Status"
+                          value={editingQuestion.active ? "active" : "inactive"}
+                          options={questionStatusOptions}
+                          onChange={(status) => setEditingQuestion({ ...editingQuestion, active: status === "active" })}
+                          className="compact blocky"
+                        />
                       </div>
                       <label>
                         Explicacao
@@ -1412,27 +1372,10 @@ export default function AdminPage() {
                               <input type="email" value={editingUser.email} onChange={(event) => setEditingUser({ ...editingUser, email: event.target.value })} />
                             </label>
                             <div className="class-editor">
-                              <label>
-                                Serie
-                                <select value={editingUser.grade} onChange={(event) => setEditingUser({ ...editingUser, grade: event.target.value })}>
-                                  {gradeOptions.map((grade) => <option value={grade} key={grade}>{grade}</option>)}
-                                </select>
-                              </label>
-                              <label>
-                                Turma
-                                <select value={editingUser.className} onChange={(event) => setEditingUser({ ...editingUser, className: event.target.value })}>
-                                  {classOptions.map((className) => <option value={className} key={className}>{className}</option>)}
-                                </select>
-                              </label>
+                              <ChoicePills label="Serie" value={editingUser.grade} options={gradeOptions} onChange={(grade) => setEditingUser({ ...editingUser, grade })} className="compact" />
+                              <ChoicePills label="Turma" value={editingUser.className} options={classOptions} onChange={(className) => setEditingUser({ ...editingUser, className })} className="compact" />
                             </div>
-                            <label>
-                              Status
-                              <select value={editingUser.status} onChange={(event) => setEditingUser({ ...editingUser, status: event.target.value })}>
-                                <option value="pending">Pendente</option>
-                                <option value="approved">Aprovado</option>
-                                <option value="rejected">Rejeitado</option>
-                              </select>
-                            </label>
+                            <ChoicePills label="Status" value={editingUser.status} options={userStatusOptions} onChange={(status) => setEditingUser({ ...editingUser, status })} className="compact blocky" />
                             <p className="muted">Alterar este e-mail atualiza o cadastro no Firestore. O e-mail de login do Firebase Auth precisa de Admin SDK/Cloud Function.</p>
                             <div className="row-actions">
                               <button type="submit">Salvar aluno</button>
@@ -1615,28 +1558,26 @@ export default function AdminPage() {
                   <span>{user.email} · {user.status} · {user.role} · {user.grade || "sem serie"} / {user.className || "sem turma"}</span>
                 </div>
                 <div className="class-editor">
-                  <select
-                    aria-label="Serie"
+                  <ChoicePills
+                    label="Serie"
                     value={gradeOptions.includes(user.grade) ? user.grade : ""}
-                    onChange={(event) => updateUserClass(user.id, {
-                      grade: event.target.value,
+                    options={[{ value: "", label: "Serie" }, ...gradeOptions.map((grade) => ({ value: grade, label: grade }))]}
+                    onChange={(grade) => updateUserClass(user.id, {
+                      grade,
                       className: classOptions.includes(user.className) ? user.className : "A"
                     }).then(refresh)}
-                  >
-                    <option value="">Serie</option>
-                    {gradeOptions.map((grade) => <option value={grade} key={grade}>{grade}</option>)}
-                  </select>
-                  <select
-                    aria-label="Turma"
+                    className="compact"
+                  />
+                  <ChoicePills
+                    label="Turma"
                     value={classOptions.includes(user.className) ? user.className : ""}
-                    onChange={(event) => updateUserClass(user.id, {
+                    options={[{ value: "", label: "Turma" }, ...classOptions.map((className) => ({ value: className, label: className }))]}
+                    onChange={(className) => updateUserClass(user.id, {
                       grade: gradeOptions.includes(user.grade) ? user.grade : "1 ano",
-                      className: event.target.value
+                      className
                     }).then(refresh)}
-                  >
-                    <option value="">Turma</option>
-                    {classOptions.map((className) => <option value={className} key={className}>{className}</option>)}
-                  </select>
+                    className="compact"
+                  />
                 </div>
                 <div className="row-actions">
                   <button type="button" onClick={() => approveUser(user.id, {
@@ -1725,8 +1666,54 @@ export default function AdminPage() {
             </form>
           )}
 
+          <div className="creation-filter-panel">
+            <div>
+              <strong>{filteredAccessoryRequests.length} criacao(oes)</strong>
+              <span>
+                {Number(creationSummary.pending || 0)} pendente(s) · {Number(creationSummary.voting || 0)} em votacao · {Number(creationSummary.listed || 0)} na loja
+              </span>
+            </div>
+            <div className="creation-filter-group">
+              <span>Situacao</span>
+              <div className="creation-filter-pills">
+                {creationStatusFilters.map((filter) => (
+                  <button
+                    type="button"
+                    key={filter.value}
+                    className={creationFilters.status === filter.value ? "active" : ""}
+                    onClick={() => setCreationFilters((current) => ({ ...current, status: filter.value }))}
+                  >
+                    {filter.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="creation-filter-group category-group">
+              <span>Categoria</span>
+              <div className="creation-category-pills">
+                <button
+                  type="button"
+                  className={!creationFilters.category ? "active" : ""}
+                  onClick={() => setCreationFilters((current) => ({ ...current, category: "" }))}
+                >
+                  Todas
+                </button>
+                {avatarItemCategoryOptions.map((category) => (
+                  <button
+                    type="button"
+                    key={category.value}
+                    className={creationFilters.category === category.value ? "active" : ""}
+                    onClick={() => setCreationFilters((current) => ({ ...current, category: category.value }))}
+                  >
+                    {category.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
           <div className="accessory-request-grid">
-            {accessoryRequests.map((item) => {
+            {filteredAccessoryRequests.map((item) => {
               const previewSrc = getAccessoryPreviewSrc(item);
               const selectedShopCategory = accessoryShopCategories[item.id] || item.shopCategoryKey || item.category || "accessories";
               return (
@@ -1761,19 +1748,13 @@ export default function AdminPage() {
                     </div>
                   </label>
                   {item.description && <p>{item.description}</p>}
-                  <label className="accessory-shop-price">
-                    Status
-                    <select
-                      value={item.status || "pending"}
-                      onChange={(event) => handleAccessoryStatus(item, event.target.value)}
-                    >
-                      <option value="pending">Pendente</option>
-                      <option value="voting">Votacao</option>
-                      <option value="approved">Aprovado</option>
-                      <option value="listed">Na loja</option>
-                      <option value="rejected">Rejeitado</option>
-                    </select>
-                  </label>
+                  <ChoicePills
+                    label="Status"
+                    value={item.status || "pending"}
+                    options={accessoryStatusOptions}
+                    onChange={(status) => handleAccessoryStatus(item, status)}
+                    className="compact blocky"
+                  />
                   <label className="accessory-shop-price">
                     Preco na loja
                     <input
@@ -1787,26 +1768,16 @@ export default function AdminPage() {
                       }))}
                     />
                   </label>
-                  <label className="accessory-shop-price">
-                    Categoria
-                    <select
-                      value={selectedShopCategory}
-                      onChange={(event) => setAccessoryShopCategories((current) => ({
-                        ...current,
-                        [item.id]: event.target.value
-                      }))}
-                    >
-                      <option value="base">Base</option>
-                      <option value="hair">Cabelo</option>
-                      <option value="shirts">Camisa</option>
-                      <option value="eyes">Olhos</option>
-                      <option value="mouths">Boca</option>
-                      <option value="accessories">Acessorio</option>
-                      <option value="pants">Calca</option>
-                      <option value="pets">Pet</option>
-                      <option value="emojis">Emoji</option>
-                    </select>
-                  </label>
+                  <ChoicePills
+                    label="Categoria"
+                    value={selectedShopCategory}
+                    options={avatarItemCategoryOptions}
+                    onChange={(category) => setAccessoryShopCategories((current) => ({
+                      ...current,
+                      [item.id]: category
+                    }))}
+                    className="compact blocky"
+                  />
                   <div className="row-actions">
                     <button type="button" className="secondary" onClick={() => downloadAccessoryRequest(item)}>
                       <Download size={16} />
@@ -1842,6 +1813,7 @@ export default function AdminPage() {
               );
             })}
             {!accessoryRequests.length && <p className="muted">Nenhuma criacao enviada ainda.</p>}
+            {accessoryRequests.length > 0 && !filteredAccessoryRequests.length && <p className="muted">Nenhuma criacao encontrada para estes filtros.</p>}
           </div>
         </section>
       )}
@@ -1919,17 +1891,13 @@ export default function AdminPage() {
           </div>
 
           <form className="admin-form" onSubmit={handleSaveSocialConfig}>
-            <label>
-              Quem pode aparecer para os alunos
-              <select
-                value={socialConfig.visibilityScope || "class"}
-                onChange={(event) => setSocialConfig({ ...socialConfig, visibilityScope: event.target.value })}
-              >
-                {socialVisibilityOptions.map((option) => (
-                  <option value={option.value} key={option.value}>{option.label}</option>
-                ))}
-              </select>
-            </label>
+            <ChoicePills
+              label="Quem pode aparecer para os alunos"
+              value={socialConfig.visibilityScope || "class"}
+              options={socialVisibilityOptions}
+              onChange={(visibilityScope) => setSocialConfig({ ...socialConfig, visibilityScope })}
+              className="blocky"
+            />
             <div className="social-scope-preview">
               <article>
                 <strong>Apenas turma</strong>
@@ -1962,26 +1930,8 @@ export default function AdminPage() {
           </div>
 
           <div className="analytics-filters">
-            <label>
-              Serie
-              <select
-                value={analyticsFilters.grade}
-                onChange={(event) => setAnalyticsFilters((current) => ({ ...current, grade: event.target.value }))}
-              >
-                <option value="">Todas</option>
-                {gradeOptions.map((grade) => <option value={grade} key={grade}>{grade}</option>)}
-              </select>
-            </label>
-            <label>
-              Turma
-              <select
-                value={analyticsFilters.className}
-                onChange={(event) => setAnalyticsFilters((current) => ({ ...current, className: event.target.value }))}
-              >
-                <option value="">Todas</option>
-                {classOptions.map((className) => <option value={className} key={className}>{className}</option>)}
-              </select>
-            </label>
+            <ChoicePills label="Serie" value={analyticsFilters.grade} options={allGradeOptions} onChange={(grade) => setAnalyticsFilters((current) => ({ ...current, grade }))} className="compact" />
+            <ChoicePills label="Turma" value={analyticsFilters.className} options={allClassOptions} onChange={(className) => setAnalyticsFilters((current) => ({ ...current, className }))} className="compact" />
             <button
               type="button"
               className="secondary"

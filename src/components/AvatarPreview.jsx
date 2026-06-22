@@ -8,6 +8,7 @@ function normalizeAvatar(avatar) {
     shirts: avatar?.shirts || avatar?.outfit || defaultAvatar.shirts,
     mouths: avatar?.mouths || avatar?.mouth || defaultAvatar.mouths,
     pants: avatar?.pants || defaultAvatar.pants,
+    shoes: avatar?.shoes || defaultAvatar.shoes,
     pets: avatar?.pets || defaultAvatar.pets
   };
 }
@@ -60,6 +61,7 @@ export default function AvatarPreview({ avatar, size = 128, catalog: providedCat
   const hasPngMouth = usesPngSprite(activeCatalog, "mouths", normalized.mouths);
   const hasPngShirt = usesPngSprite(activeCatalog, "shirts", normalized.shirts);
   const hasPngPants = usesPngSprite(activeCatalog, "pants", normalized.pants);
+  const hasPngShoes = usesPngSprite(activeCatalog, "shoes", normalized.shoes);
   const hasPngAccessories = usesPngSprite(activeCatalog, "accessories", normalized.accessories);
   const hasPngPets = usesPngSprite(activeCatalog, "pets", normalized.pets);
 
@@ -79,6 +81,7 @@ export default function AvatarPreview({ avatar, size = 128, catalog: providedCat
         )}
         {hasPngShirt ? <EggSpriteLayer catalog={activeCatalog} category="shirts" id={normalized.shirts} /> : null}
         {hasPngPants ? <EggSpriteLayer catalog={activeCatalog} category="pants" id={normalized.pants} /> : null}
+        {hasPngShoes ? <EggSpriteLayer catalog={activeCatalog} category="shoes" id={normalized.shoes} /> : null}
         {hasPngAccessories ? <EggSpriteLayer catalog={activeCatalog} category="accessories" id={normalized.accessories} /> : null}
         {hasPngPets ? <EggSpriteLayer catalog={activeCatalog} category="pets" id={normalized.pets} /> : null}
       </svg>

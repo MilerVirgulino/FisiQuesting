@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
+import AvatarInventoryPicker from "./AvatarInventoryPicker.jsx";
 import AvatarPreview from "./AvatarPreview.jsx";
+import ChoicePills from "./ChoicePills.jsx";
 import PixelAccessoryEditor from "./PixelAccessoryEditor.jsx";
 import {
   defaultAvatar,
@@ -27,6 +29,7 @@ function normalizeAvatar(avatar, catalog) {
     shirts: avatar?.shirts || avatar?.outfit || defaultAvatar.shirts,
     mouths: avatar?.mouths || avatar?.mouth || defaultAvatar.mouths,
     pants: avatar?.pants || defaultAvatar.pants,
+    shoes: avatar?.shoes || defaultAvatar.shoes,
     pets: avatar?.pets || defaultAvatar.pets
   };
 
@@ -240,36 +243,13 @@ export default function AvatarEditor({ userId, profile, onSaved }) {
 
         {activeTab === "customize" && !catalogLoading && (
           <form onSubmit={handleSubmit}>
-            <div className="avatar-category-grid">
-              {avatarCategories.map((category) => {
-                const ownedOptions = getAvatarOptions(catalog, category).filter((option) => {
-                  return userOwnsAvatarItem(profile, category.key, option.id, catalog);
-                });
-                const selectedItemId = ownedOptions.some((option) => option.id === equipableAvatar[category.key])
-                  ? equipableAvatar[category.key]
-                  : ownedOptions[0]?.id || "";
-
-                return (
-                  <div className="avatar-shop-row" key={category.key}>
-                    <label>
-                      {category.label}
-                      <select
-                        value={selectedItemId}
-                        onChange={(event) => setAvatar({ ...avatar, [category.key]: event.target.value })}
-                        disabled={!ownedOptions.length}
-                      >
-                        {!ownedOptions.length && <option value="">Nenhum item publicado</option>}
-                        {ownedOptions.map((option) => (
-                          <option value={option.id} key={option.id}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  </div>
-                );
-              })}
-            </div>
+            <AvatarInventoryPicker
+              categories={avatarCategories}
+              catalog={catalog}
+              profile={profile}
+              avatar={equipableAvatar}
+              onChange={(categoryKey, itemId) => setAvatar({ ...avatar, [categoryKey]: itemId })}
+            />
 
             <button type="submit" disabled={saving}>
               {saving ? "Salvando..." : "Salvar avatar"}
@@ -373,21 +353,17 @@ export default function AvatarEditor({ userId, profile, onSaved }) {
               </button>
             </div>
             {requestType !== "emoji" && (
-              <label>
-                Corpo guia
-                <select
+              baseOptions.length ? (
+                <ChoicePills
+                  label="Corpo guia"
                   value={selectedGuideBase?.id || ""}
-                  onChange={(event) => setRequestGuideBaseId(event.target.value)}
-                  disabled={!baseOptions.length}
-                >
-                  {!baseOptions.length && <option value="">Nenhum corpo publicado</option>}
-                  {baseOptions.map((option) => (
-                    <option value={option.id} key={option.id}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                  options={baseOptions.map((option) => ({ value: option.id, label: option.label }))}
+                  onChange={setRequestGuideBaseId}
+                  className="blocky"
+                />
+              ) : (
+                <p className="muted">Nenhum corpo publicado</p>
+              )
             )}
             {requestType !== "emoji" && !selectedGuideBase && (
               <p className="muted">

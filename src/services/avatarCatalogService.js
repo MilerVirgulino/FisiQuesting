@@ -7,7 +7,7 @@ import {
 import { db } from "../firebase-init";
 import { colorsToPixelData, getRenderablePixelArtSrc } from "../utils/pixelArt";
 
-const CACHE_KEY = "fisioquest.avatarCatalog.v3";
+const CACHE_KEY = "fisioquest.avatarCatalog.v4";
 const CACHE_TTL_MS = 1000 * 60 * 10;
 
 const categoryDefinitions = [
@@ -18,6 +18,7 @@ const categoryDefinitions = [
   { key: "mouths", label: "Bocas", folder: "mouths", defaultId: "mouth_none" },
   { key: "accessories", label: "Acessorios", folder: "accessories", defaultId: "accessories_none" },
   { key: "pants", label: "Calcas", folder: "pants", defaultId: "pants_none" },
+  { key: "shoes", label: "Sapatos", folder: "shoes", defaultId: "shoes_none" },
   { key: "pets", label: "Pets", folder: "pets", defaultId: "pets_none" },
   { key: "emojis", label: "Emojis", folder: "emojis", defaultId: "emojis_none", visible: false, shopVisible: true }
 ];
@@ -90,6 +91,7 @@ const defaultItems = [
   { id: "mouth_none", categoryKey: "mouths", label: "Nenhuma", source: "svg", price: 0, defaultItem: true, active: true },
   { id: "accessories_none", categoryKey: "accessories", label: "Nenhum", source: "svg", price: 0, defaultItem: true, active: true },
   { id: "pants_none", categoryKey: "pants", label: "Nenhuma", source: "svg", price: 0, defaultItem: true, active: true },
+  { id: "shoes_none", categoryKey: "shoes", label: "Nenhum", source: "svg", price: 0, defaultItem: true, active: true },
   { id: "pets_none", categoryKey: "pets", label: "Nenhum", source: "svg", price: 0, defaultItem: true, active: true },
   { id: "emojis_none", categoryKey: "emojis", label: "Nenhum", source: "svg", price: 0, defaultItem: true, active: true },
   {
