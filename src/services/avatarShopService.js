@@ -7,6 +7,7 @@ export function getOwnedAvatarItems(profile) {
 }
 
 export function userOwnsAvatarItem(profile, categoryKey, itemId, catalog) {
+  if (categoryKey === "base") return true;
   return isFreeAvatarItem(catalog, categoryKey, itemId) || getOwnedAvatarItems(profile).includes(itemId);
 }
 

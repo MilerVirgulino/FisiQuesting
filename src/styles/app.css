@@ -910,13 +910,71 @@ label {
 }
 
 .pixel-editor-toolbar {
+  position: fixed;
+  left: max(12px, env(safe-area-inset-left));
+  bottom: calc(92px + env(safe-area-inset-bottom));
+  z-index: 51;
   display: grid;
   align-content: start;
   gap: 8px;
+  width: 142px;
+  max-height: min(68vh, 520px);
+  overflow: auto;
+  padding: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.24);
+  backdrop-filter: blur(12px);
+}
+
+.pixel-floating-toolbar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.pixel-floating-toolbar-header span {
+  color: var(--ink);
+  font-size: 0.76rem;
+  font-weight: 900;
+}
+
+.pixel-floating-toolbar-header button,
+.pixel-tool-fab {
+  appearance: none;
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  min-height: 0;
+  padding: 0;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  border-radius: 999px;
+  background: #ffffff;
+  color: var(--ink);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.12);
+}
+
+.pixel-tool-fab {
+  position: fixed;
+  left: max(12px, env(safe-area-inset-left));
+  bottom: calc(92px + env(safe-area-inset-bottom));
+  z-index: 51;
+  width: 46px;
+  min-width: 46px;
+  height: 46px;
+  background: linear-gradient(135deg, #08b7d8, #4f46e5);
+  color: #ffffff;
+  box-shadow: 0 14px 36px rgba(15, 23, 42, 0.28);
 }
 
 .pixel-tool-group {
   display: grid;
+  grid-template-columns: repeat(2, 42px);
   gap: 8px;
 }
 
@@ -939,6 +997,56 @@ label {
   border-color: rgba(8, 183, 216, 0.65);
   background: #ecfeff;
   color: var(--primary-strong);
+}
+
+.pixel-brush-control {
+  width: 100%;
+  min-width: 0;
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.pixel-brush-control span {
+  color: var(--ink);
+  font-size: 0.74rem;
+  font-weight: 900;
+}
+
+.pixel-brush-buttons {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+  width: 100%;
+}
+
+.pixel-brush-buttons button {
+  width: 100%;
+  min-width: 0;
+  min-height: 28px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #ffffff;
+  color: var(--ink);
+  font-size: 0.76rem;
+  font-weight: 900;
+}
+
+.pixel-brush-buttons button.active {
+  border-color: rgba(8, 183, 216, 0.65);
+  background: #ecfeff;
+  color: var(--primary-strong);
+}
+
+.pixel-tool-actions {
+  display: grid;
+  grid-template-columns: repeat(2, 42px);
+  gap: 8px;
 }
 
 .pixel-resolution-row {
@@ -1056,10 +1164,7 @@ label {
 }
 
 .pixel-workspace {
-  display: grid;
-  grid-template-columns: 50px minmax(0, 1fr);
-  align-items: start;
-  gap: 10px;
+  display: block;
   min-width: 0;
 }
 
@@ -1087,7 +1192,7 @@ label {
 
 .pixel-canvas-wrap {
   position: relative;
-  width: min(calc(100vw - 54px), calc(360px * var(--pixel-zoom, 1)));
+  width: min(calc(100vw - 32px), calc(360px * var(--pixel-zoom, 1)));
   min-width: calc(320px * var(--pixel-zoom, 1));
   aspect-ratio: 1;
   overflow: hidden;
@@ -2302,6 +2407,45 @@ label {
   gap: 14px;
 }
 
+.accessory-art-editor-panel {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 16px;
+  padding: 14px;
+  border: 1px solid rgba(8, 183, 216, 0.28);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.accessory-art-editor-actions {
+  position: sticky;
+  bottom: calc(12px + env(safe-area-inset-bottom));
+  z-index: 70;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.42);
+  border-radius: 8px;
+  background: rgba(248, 250, 252, 0.96);
+  box-shadow: 0 16px 34px rgba(15, 23, 42, 0.16);
+  backdrop-filter: blur(10px);
+}
+
+.accessory-art-editor-actions button {
+  min-width: 0;
+}
+
+.art-save-original-button {
+  background: linear-gradient(135deg, #f97316, #ef4444);
+  color: #ffffff;
+}
+
+.art-create-copy-button {
+  background: linear-gradient(135deg, #08b7d8, #22c55e);
+  color: #ffffff;
+}
+
 .accessory-request-card {
   position: relative;
   display: grid;
@@ -3097,6 +3241,30 @@ label {
 
   .avatar-editor {
     grid-template-columns: 320px minmax(0, 1fr);
+  }
+
+  .pixel-workspace {
+    display: grid;
+    grid-template-columns: 158px minmax(0, 1fr);
+    align-items: start;
+    gap: 12px;
+  }
+
+  .pixel-editor-toolbar {
+    position: sticky;
+    top: 16px;
+    left: auto;
+    bottom: auto;
+    width: 142px;
+    max-height: calc(100vh - 32px);
+  }
+
+  .pixel-tool-fab {
+    position: sticky;
+    top: 16px;
+    left: auto;
+    bottom: auto;
+    align-self: start;
   }
 
   .avatar-category-grid {

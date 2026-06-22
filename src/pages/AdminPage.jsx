@@ -1,8 +1,10 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Activity, BarChart3, BookOpen, CircleDollarSign, Download, GripVertical, Lock, Palette, RadioTower, Share2, Target, Trash2, TrendingUp, Trophy, Users } from "lucide-react";
 import AvatarPreview from "../components/AvatarPreview.jsx";
+import PixelAccessoryEditor from "../components/PixelAccessoryEditor.jsx";
 import {
   approveAccessoryRequestToShop,
+  createAdminAccessoryRequestCopy,
   deleteAccessoryRequest,
   listAccessoryRequests,
   updateAccessoryRequestDetails,
@@ -226,6 +228,9 @@ export default function AdminPage() {
   const [accessoryShopPrices, setAccessoryShopPrices] = useState({});
   const [accessoryShopCategories, setAccessoryShopCategories] = useState({});
   const [accessoryTitles, setAccessoryTitles] = useState({});
+  const [editingAccessoryArt, setEditingAccessoryArt] = useState(null);
+  const [editingAccessoryPixelData, setEditingAccessoryPixelData] = useState(null);
+  const [savingAccessoryArt, setSavingAccessoryArt] = useState(false);
   const [question, setQuestion] = useState(initialQuestion);
   const [mission, setMission] = useState(initialMission);
   const [loadErrors, setLoadErrors] = useState([]);
@@ -572,8 +577,10 @@ export default function AdminPage() {
   }
 
   async function handleAccessoryPublish(item) {
-    const price = Number(accessoryShopPrices[item.id] ?? item.shopPrice ?? economyConfig.avatarItemPrice ?? defaultEconomyConfig.avatarItemPrice);
     const categoryKey = accessoryShopCategories[item.id] || item.shopCategoryKey || item.category || "accessories";
+    const price = categoryKey === "base"
+      ? 0
+      : Number(accessoryShopPrices[item.id] ?? item.shopPrice ?? economyConfig.avatarItemPrice ?? defaultEconomyConfig.avatarItemPrice);
     await approveAccessoryRequestToShop(item, { price, categoryKey });
     await refresh();
   }
@@ -590,6 +597,60 @@ export default function AdminPage() {
     if (!title) return;
     await updateAccessoryRequestDetails(item.id, { title });
     await refresh();
+  }
+
+  function handleAccessoryArtEdit(item) {
+    setEditingAccessoryArt(item);
+    setEditingAccessoryPixelData(item.pixelData || null);
+  }
+
+  function handleAccessoryArtDuplicate(item) {
+    if (!item.pixelData) return;
+    setEditingAccessoryArt({
+      ...item,
+      id: `${item.id}_duplicate_${Date.now()}`,
+      title: `${item.title || "Criacao"} - copia`,
+      duplicatedFromId: item.id
+    });
+    setEditingAccessoryPixelData(item.pixelData);
+  }
+
+  async function handleAccessoryArtSave(event) {
+    event.preventDefault();
+    if (!editingAccessoryArt || !editingAccessoryPixelData || editingAccessoryArt.duplicatedFromId) return;
+
+    setSavingAccessoryArt(true);
+    try {
+      await updateAccessoryRequestDetails(editingAccessoryArt.id, {
+        pixelData: editingAccessoryPixelData,
+        imageDataUrl: "",
+        src: ""
+      });
+      setEditingAccessoryArt(null);
+      setEditingAccessoryPixelData(null);
+      await refresh();
+    } finally {
+      setSavingAccessoryArt(false);
+    }
+  }
+
+  async function handleAccessoryArtCreateCopy() {
+    if (!editingAccessoryArt || !editingAccessoryPixelData) return;
+
+    setSavingAccessoryArt(true);
+    try {
+      await createAdminAccessoryRequestCopy(editingAccessoryArt, {
+        title: editingAccessoryArt.duplicatedFromId
+          ? editingAccessoryArt.title
+          : `${editingAccessoryArt.title || "Criacao"} - copia`,
+        pixelData: editingAccessoryPixelData
+      });
+      setEditingAccessoryArt(null);
+      setEditingAccessoryPixelData(null);
+      await refresh();
+    } finally {
+      setSavingAccessoryArt(false);
+    }
   }
 
   async function handleSaveSocialConfig(event) {
@@ -1532,9 +1593,68 @@ export default function AdminPage() {
             <Palette size={26} />
           </div>
 
+          {editingAccessoryArt && (
+            <form className="accessory-art-editor-panel" onSubmit={handleAccessoryArtSave}>
+              <div className="section-heading">
+                <div>
+                  <p className="eyebrow">Edicao de arte</p>
+                  <h3>{editingAccessoryArt.title || "Criacao sem titulo"}</h3>
+                  <span>
+                    {editingAccessoryArt.duplicatedFromId
+                      ? "Edite esta variacao e crie um novo pedido no catalogo, sem alterar a arte original."
+                      : "Corrija a arte original ou crie uma copia nova para reaproveitar o modelo com seguranca."}
+                  </span>
+                </div>
+                <Palette size={24} />
+              </div>
+              <PixelAccessoryEditor
+                key={editingAccessoryArt.id}
+                onPixelDataChange={setEditingAccessoryPixelData}
+                storageKey=""
+                showGuide={false}
+                initialPixelData={editingAccessoryArt.pixelData || null}
+              />
+              {editingAccessoryArt.duplicatedFromId && (
+                <p className="muted">
+                  Modo copia: ao confirmar, um novo pedido sera criado no Firebase. A arte original fica preservada.
+                </p>
+              )}
+              <div className="accessory-art-editor-actions">
+                {!editingAccessoryArt.duplicatedFromId && (
+                  <button
+                    type="submit"
+                    className="art-save-original-button"
+                    disabled={savingAccessoryArt || !editingAccessoryPixelData}
+                  >
+                    {savingAccessoryArt ? "Salvando..." : "Salvar na arte original"}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="art-create-copy-button"
+                  disabled={savingAccessoryArt || !editingAccessoryPixelData}
+                  onClick={handleAccessoryArtCreateCopy}
+                >
+                  {savingAccessoryArt ? "Criando..." : "Criar nova copia"}
+                </button>
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={() => {
+                    setEditingAccessoryArt(null);
+                    setEditingAccessoryPixelData(null);
+                  }}
+                >
+                  Cancelar
+                </button>
+              </div>
+            </form>
+          )}
+
           <div className="accessory-request-grid">
             {accessoryRequests.map((item) => {
               const previewSrc = getAccessoryPreviewSrc(item);
+              const selectedShopCategory = accessoryShopCategories[item.id] || item.shopCategoryKey || item.category || "accessories";
               return (
               <article className={`accessory-request-card status-${item.status || "pending"}`} key={item.id}>
                 <div className="accessory-card-top">
@@ -1585,7 +1705,8 @@ export default function AdminPage() {
                     <input
                       type="number"
                       min="0"
-                      value={accessoryShopPrices[item.id] ?? item.shopPrice ?? economyConfig.avatarItemPrice ?? defaultEconomyConfig.avatarItemPrice}
+                      value={selectedShopCategory === "base" ? 0 : accessoryShopPrices[item.id] ?? item.shopPrice ?? economyConfig.avatarItemPrice ?? defaultEconomyConfig.avatarItemPrice}
+                      disabled={selectedShopCategory === "base"}
                       onChange={(event) => setAccessoryShopPrices((current) => ({
                         ...current,
                         [item.id]: event.target.value
@@ -1595,7 +1716,7 @@ export default function AdminPage() {
                   <label className="accessory-shop-price">
                     Categoria
                     <select
-                      value={accessoryShopCategories[item.id] || item.shopCategoryKey || item.category || "accessories"}
+                      value={selectedShopCategory}
                       onChange={(event) => setAccessoryShopCategories((current) => ({
                         ...current,
                         [item.id]: event.target.value
@@ -1616,6 +1737,12 @@ export default function AdminPage() {
                     <button type="button" className="secondary" onClick={() => downloadAccessoryRequest(item)}>
                       <Download size={16} />
                       Baixar PNG
+                    </button>
+                    <button type="button" className="secondary" onClick={() => handleAccessoryArtEdit(item)} disabled={!item.pixelData}>
+                      Editar arte
+                    </button>
+                    <button type="button" className="secondary" onClick={() => handleAccessoryArtDuplicate(item)} disabled={!item.pixelData}>
+                      Duplicar e editar
                     </button>
                     <button type="button" onClick={() => handleAccessoryStatus(item, "voting")}>
                       Votacao

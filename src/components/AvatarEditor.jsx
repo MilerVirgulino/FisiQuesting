@@ -34,7 +34,7 @@ function normalizeAvatar(avatar, catalog) {
     const options = getAvatarOptions(catalog, category);
     const exists = options.some((option) => option.id === normalized[category.key]);
     if (!exists) {
-      normalized[category.key] = defaultAvatar[category.key];
+      normalized[category.key] = options[0]?.id || defaultAvatar[category.key] || "";
     }
   });
 
@@ -49,7 +49,7 @@ function getEquipableAvatar(avatar, profile, catalog) {
 
     return {
       ...current,
-      [category.key]: defaultAvatar[category.key]
+      [category.key]: getAvatarOptions(catalog, category)[0]?.id || defaultAvatar[category.key] || ""
     };
   }, avatar);
 }
@@ -67,6 +67,9 @@ export default function AvatarEditor({ userId, profile, onSaved }) {
   const [requestDescription, setRequestDescription] = useState("");
   const [requestPixelData, setRequestPixelData] = useState(null);
   const [requestType, setRequestType] = useState("avatarItem");
+  const [requestGuideBaseId, setRequestGuideBaseId] = useState(defaultAvatar.base);
+  const [draftBasePixelData, setDraftBasePixelData] = useState(null);
+  const [draftBaseToken, setDraftBaseToken] = useState("");
   const [requestingAccessory, setRequestingAccessory] = useState(false);
   const [clearDraftToken, setClearDraftToken] = useState(0);
   const [economyConfig, setEconomyConfig] = useState({ customCreationPrice: ACCESSORY_REQUEST_PRICE });
@@ -76,6 +79,8 @@ export default function AvatarEditor({ userId, profile, onSaved }) {
   const creationPrice = Number(economyConfig.customCreationPrice || ACCESSORY_REQUEST_PRICE);
   const coins = Number(profile?.coins || 0);
   const equipableAvatar = getEquipableAvatar(avatar, profile, catalog);
+  const baseOptions = getAvatarOptions(catalog, "base").filter((option) => option.source !== "svg" && option.src);
+  const selectedGuideBase = baseOptions.find((option) => option.id === requestGuideBaseId) || baseOptions[0] || null;
   const previewAvatar = previewItem
     ? { ...equipableAvatar, [previewItem.categoryKey]: previewItem.itemId }
     : equipableAvatar;
@@ -102,6 +107,12 @@ export default function AvatarEditor({ userId, profile, onSaved }) {
         setCatalog(loadedCatalog);
         setEconomyConfig(loadedEconomyConfig);
         setAvatar(normalizeAvatar(profile?.avatar, loadedCatalog));
+        const availableBases = getAvatarOptions(loadedCatalog, "base").filter((option) => option.source !== "svg" && option.src);
+        if (availableBases.length) {
+          setRequestGuideBaseId((current) => (
+            availableBases.some((option) => option.id === current) ? current : availableBases[0].id
+          ));
+        }
       })
       .finally(() => {
         if (active) setCatalogLoading(false);
@@ -145,6 +156,18 @@ export default function AvatarEditor({ userId, profile, onSaved }) {
     }
   }
 
+  function handleRemixItem(item, category) {
+    if (!item.pixelData) return;
+    const isEmoji = category.key === "emojis";
+    setRequestType(isEmoji ? "emoji" : "avatarItem");
+    setRequestTitle(`${item.label || "Criacao"} remix`);
+    setRequestDescription("");
+    setRequestPixelData(item.pixelData);
+    setDraftBasePixelData(item.pixelData);
+    setDraftBaseToken(`${item.id}-${Date.now()}`);
+    setActiveTab("create");
+  }
+
   async function handleAccessoryRequest(event) {
     event.preventDefault();
     setShopMessage("");
@@ -178,6 +201,8 @@ export default function AvatarEditor({ userId, profile, onSaved }) {
       setRequestTitle("");
       setRequestDescription("");
       setRequestPixelData(null);
+      setDraftBasePixelData(null);
+      setDraftBaseToken("");
       setClearDraftToken((current) => current + 1);
       await onSaved?.();
       setShopMessage(isEmojiRequest ? "Emoji enviado para avaliacao do professor." : "Criacao enviada para avaliacao do professor.");
@@ -222,7 +247,7 @@ export default function AvatarEditor({ userId, profile, onSaved }) {
                 });
                 const selectedItemId = ownedOptions.some((option) => option.id === equipableAvatar[category.key])
                   ? equipableAvatar[category.key]
-                  : defaultAvatar[category.key];
+                  : ownedOptions[0]?.id || "";
 
                 return (
                   <div className="avatar-shop-row" key={category.key}>
@@ -231,7 +256,9 @@ export default function AvatarEditor({ userId, profile, onSaved }) {
                       <select
                         value={selectedItemId}
                         onChange={(event) => setAvatar({ ...avatar, [category.key]: event.target.value })}
+                        disabled={!ownedOptions.length}
                       >
+                        {!ownedOptions.length && <option value="">Nenhum item publicado</option>}
                         {ownedOptions.map((option) => (
                           <option value={option.id} key={option.id}>
                             {option.label}
@@ -287,6 +314,14 @@ export default function AvatarEditor({ userId, profile, onSaved }) {
                           >
                             {buyingItemId === item.id ? "Comprando..." : "Comprar"}
                           </button>
+                          <button
+                            type="button"
+                            className="secondary"
+                            disabled={!item.pixelData}
+                            onClick={() => handleRemixItem(item, item.category)}
+                          >
+                            Usar como base
+                          </button>
                         </div>
                       </article>
                     );
@@ -318,6 +353,8 @@ export default function AvatarEditor({ userId, profile, onSaved }) {
                 onClick={() => {
                   setRequestType("avatarItem");
                   setRequestPixelData(null);
+                  setDraftBasePixelData(null);
+                  setDraftBaseToken("");
                 }}
               >
                 Item do avatar
@@ -328,17 +365,44 @@ export default function AvatarEditor({ userId, profile, onSaved }) {
                 onClick={() => {
                   setRequestType("emoji");
                   setRequestPixelData(null);
+                  setDraftBasePixelData(null);
+                  setDraftBaseToken("");
                 }}
               >
                 Emoji
               </button>
             </div>
+            {requestType !== "emoji" && (
+              <label>
+                Corpo guia
+                <select
+                  value={selectedGuideBase?.id || ""}
+                  onChange={(event) => setRequestGuideBaseId(event.target.value)}
+                  disabled={!baseOptions.length}
+                >
+                  {!baseOptions.length && <option value="">Nenhum corpo publicado</option>}
+                  {baseOptions.map((option) => (
+                    <option value={option.id} key={option.id}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            {requestType !== "emoji" && !selectedGuideBase && (
+              <p className="muted">
+                Nenhum corpo base publicado no Firebase ainda. Aprove uma criacao na categoria Base para ela aparecer como guia.
+              </p>
+            )}
             <PixelAccessoryEditor
               key={requestType}
               onPixelDataChange={setRequestPixelData}
               storageKey={requestType === "emoji" ? EMOJI_DRAFT_STORAGE_KEY : ACCESSORY_DRAFT_STORAGE_KEY}
               clearDraftToken={clearDraftToken}
               showGuide={requestType !== "emoji"}
+              guideSrc={requestType !== "emoji" ? selectedGuideBase?.src || "" : ""}
+              initialPixelData={draftBasePixelData}
+              initialPixelDataToken={draftBaseToken}
             />
             <label>
               {requestType === "emoji" ? "Nome do emoji" : "Nome do sprite"}

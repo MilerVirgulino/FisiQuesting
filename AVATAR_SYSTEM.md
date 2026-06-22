@@ -1,6 +1,6 @@
 # Sistema de Avatar Chibi
 
-O avatar atual usa um chibi cabecao personalizavel. O app desenha o personagem base em SVG dentro de `src/components/AvatarPreview.jsx`, sem spritesheet, manifesto ou recorte automatico.
+O avatar atual usa um chibi cabecao personalizavel. As camadas do personagem sao carregadas do catalogo no Firebase e renderizadas no frontend a partir de `pixelData` ou de fontes remotas aprovadas.
 
 ## Onde ficam os modelos PNG
 
@@ -16,53 +16,17 @@ Arquivos:
 - `guides/chibi-body-guide.png`: chibi cabecao com linhas-guia para rosto, cabelo, roupa, bracos e pes.
 - `items/chibi-body-item-template.png`: contorno leve para desenhar itens por cima.
 
-Todos os modelos tem `256x256` px, fundo transparente e o personagem centralizado. Ao criar cabelo, camisa, olhos, bocas, acessorios, calcas ou pets em pixel art, mantenha o arquivo nessa mesma dimensao para facilitar encaixar depois no app.
+Todos os modelos tem `256x256` px, fundo transparente e o personagem centralizado. Eles servem apenas como referencia externa para desenho; o fluxo principal de criacao acontece na oficina de pixel art do app.
 
-## Onde colocar sprites novos
+## Onde entram itens novos
 
-Sprites finais que o app deve carregar ficam em:
+Itens finais entram pelo Firebase:
 
-```txt
-public/assets/egg-sprites/
-```
-
-Estrutura:
-
-```txt
-public/assets/egg-sprites/
-  base/
-  eyes/
-  mouths/
-  hair/
-  shirts/
-  accessories/
-  pants/
-  pets/
-```
-
-O `id` cadastrado no objeto deve ser igual ao nome do arquivo, sem `.png`.
-
-Exemplo:
-
-```js
-shirts: {
-  folder: "shirts",
-  defaultId: "shirt_none",
-  items: {
-    shirt_none: { label: "Nenhuma", source: "svg" },
-    camisa_azul: { label: "Camisa azul", source: "png", price: 20 }
-  }
-}
-```
-
-Arquivo correspondente:
-
-```txt
-public/assets/egg-sprites/shirts/camisa_azul.png
-```
-
-Itens sem `source: "svg"` sao tratados como PNG automaticamente.
-Itens com `price` maior que zero precisam ser comprados com moedas antes de salvar.
+- o aluno desenha na oficina do app;
+- a criacao fica em `customAccessoryRequests`;
+- o admin aprova, escolhe categoria e preco;
+- itens aprovados aparecem no catalogo do avatar;
+- corpos na categoria `base` ficam gratuitos automaticamente.
 
 ## Como o app salva o avatar
 
@@ -72,7 +36,7 @@ O documento do usuario salva escolhas simples:
 {
   avatar: {
     kind: "chibi",
-    base: "chibi_body",
+    base: "id_do_corpo_publicado",
     hair: "hair_none",
     shirts: "shirt_none",
     eyes: "eyes_none",
@@ -89,7 +53,7 @@ O documento do usuario salva escolhas simples:
 As opcoes que aparecem no editor ficam em:
 
 ```txt
-src/data/avatarItems.json
+Firebase (`avatarItems` e `customAccessoryRequests` publicados)
 ```
 
 O desenho atual fica em:
@@ -98,4 +62,4 @@ O desenho atual fica em:
 src/components/AvatarPreview.jsx
 ```
 
-Quando um item novo sair do editor de pixel art, coloque o PNG na pasta publica da categoria e adicione uma entrada em `items` usando o mesmo `id` do arquivo. O arquivo `src/data/avatarItems.js` so transforma esse JSON em funcoes para o app.
+Quando um item novo sair do editor de pixel art, ele deve ser aprovado no painel admin. O app monta o catalogo a partir do Firebase; catalogos e sprites locais foram removidos.

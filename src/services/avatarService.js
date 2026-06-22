@@ -8,7 +8,7 @@ export function saveUserAvatar(userId, avatar) {
   return updateDoc(doc(db, "users", userId), {
     avatar: {
       kind: "chibi",
-      base: avatar.base || "chibi_body",
+      base: avatar.base || "",
       eyes: avatar.eyes || "eyes_none",
       mouths: avatar.mouths || avatar.mouth || "mouth_none",
       shirts: avatar.shirts || avatar.outfit || "shirt_none",

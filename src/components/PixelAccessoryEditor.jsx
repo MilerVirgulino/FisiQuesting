@@ -1,9 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Circle, Eraser, Hand, Minus, PaintBucket, Pencil, Pipette, Square, Trash2 } from "lucide-react";
-import { colorsToPixelData } from "../utils/pixelArt";
+import { Circle, Eraser, Hand, Minus, PaintBucket, Pencil, Pipette, RotateCcw, SlidersHorizontal, Square, Trash2, X } from "lucide-react";
+import { colorsToPixelData, pixelDataToColors } from "../utils/pixelArt";
 
 const DEFAULT_GRID_SIZE = 128;
 const RESOLUTION_OPTIONS = [32, 64, 128];
+const BRUSH_SIZE_OPTIONS = [1, 4, 9, 16];
+const MAX_HISTORY_STEPS = 25;
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 3;
 const ZOOM_STEP = 0.5;
@@ -60,6 +62,25 @@ function indexToPoint(index, gridSize) {
 
 function pointToIndex(x, y, gridSize) {
   return y * gridSize + x;
+}
+
+function getBrushIndexes(centerIndex, gridSize, brushSize) {
+  const center = indexToPoint(centerIndex, gridSize);
+  const pixelCount = Math.max(1, Number(brushSize || 1));
+  const size = Math.max(1, Math.round(Math.sqrt(pixelCount)));
+  const offsetStart = -Math.floor((size - 1) / 2);
+  const offsetEnd = Math.ceil((size - 1) / 2);
+  const indexes = [];
+
+  for (let y = center.y + offsetStart; y <= center.y + offsetEnd; y += 1) {
+    for (let x = center.x + offsetStart; x <= center.x + offsetEnd; x += 1) {
+      if (x >= 0 && y >= 0 && x < gridSize && y < gridSize) {
+        indexes.push(pointToIndex(x, y, gridSize));
+      }
+    }
+  }
+
+  return indexes;
 }
 
 function getLineIndexes(startIndex, endIndex, gridSize) {
@@ -142,9 +163,19 @@ function getShapeIndexes(tool, startIndex, endIndex, gridSize) {
   return [];
 }
 
-function applyIndexes(basePixels, indexes, activeTool, activeColor) {
-  const nextPixels = [...basePixels];
+function expandIndexesForBrush(indexes, gridSize, brushSize) {
+  if (Number(brushSize || 1) <= 1) return indexes;
+  const expanded = new Set();
   indexes.forEach((index) => {
+    getBrushIndexes(index, gridSize, brushSize).forEach((brushIndex) => expanded.add(brushIndex));
+  });
+  return Array.from(expanded);
+}
+
+function applyIndexes(basePixels, indexes, activeTool, activeColor, gridSize, brushSize = 1) {
+  const nextPixels = [...basePixels];
+  const paintedIndexes = expandIndexesForBrush(indexes, gridSize, brushSize);
+  paintedIndexes.forEach((index) => {
     if (index < 0 || index >= nextPixels.length) return;
     nextPixels[index] = activeTool === "eraser" ? EMPTY_PIXEL : activeColor;
   });
@@ -213,8 +244,27 @@ function drawPixelsOnCanvas(canvas, pixels, gridSize) {
   });
 }
 
-export default function PixelAccessoryEditor({ onPixelDataChange, storageKey, clearDraftToken = 0, showGuide = true }) {
+function getInitialDraft({ storageKey, initialPixelData }) {
   const restoredDraft = readPixelDraft(storageKey);
+  if (restoredDraft) return restoredDraft;
+
+  if (initialPixelData) {
+    try {
+      return {
+        gridSize: initialPixelData.width,
+        pixels: pixelDataToColors(initialPixelData),
+        savedAt: Date.now()
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
+}
+
+export default function PixelAccessoryEditor({ onPixelDataChange, storageKey, clearDraftToken = 0, showGuide = true, guideSrc = "", initialPixelData = null, initialPixelDataToken = "" }) {
+  const restoredDraft = getInitialDraft({ storageKey, initialPixelData });
   const initialGridSize = restoredDraft?.gridSize || DEFAULT_GRID_SIZE;
   const initialPixels = restoredDraft?.pixels || Array(initialGridSize * initialGridSize).fill(EMPTY_PIXEL);
   const [gridSize, setGridSize] = useState(initialGridSize);
@@ -222,6 +272,8 @@ export default function PixelAccessoryEditor({ onPixelDataChange, storageKey, cl
   const [previewPixels, setPreviewPixels] = useState(null);
   const [color, setColor] = useState(PALETTE[0]);
   const [tool, setTool] = useState("pencil");
+  const [brushSize, setBrushSize] = useState(1);
+  const [controlsOpen, setControlsOpen] = useState(true);
   const [drawing, setDrawing] = useState(false);
   const [zoom, setZoom] = useState(1);
   const canvasWrapRef = useRef(null);
@@ -232,6 +284,7 @@ export default function PixelAccessoryEditor({ onPixelDataChange, storageKey, cl
   const shapeStartIndexRef = useRef(null);
   const panStartRef = useRef(null);
   const outputTimeoutRef = useRef(null);
+  const historyRef = useRef([]);
   const paintedCount = useMemo(() => pixels.filter(Boolean).length, [pixels]);
   const displayPixels = previewPixels || pixels;
   const shapeTools = ["line", "rectangle", "circle"];
@@ -266,9 +319,30 @@ export default function PixelAccessoryEditor({ onPixelDataChange, storageKey, cl
     setPixels(emptyPixels);
     setPreviewPixels(null);
     shapeStartIndexRef.current = null;
+    historyRef.current = [];
     clearScheduledOutput();
     onPixelDataChange?.(null);
   }, [clearDraftToken, onPixelDataChange, storageKey]);
+
+  useEffect(() => {
+    if (!initialPixelDataToken || !initialPixelData) return;
+
+    try {
+      const nextPixels = pixelDataToColors(initialPixelData);
+      const nextGridSize = initialPixelData.width;
+      setGridSize(nextGridSize);
+      pixelsRef.current = nextPixels;
+      setPixels(nextPixels);
+      setPreviewPixels(null);
+      shapeStartIndexRef.current = null;
+      historyRef.current = [];
+      writePixelDraft(storageKey, nextGridSize, nextPixels);
+      scheduleEditorOutput(nextPixels, nextGridSize);
+    } catch {
+      // Invalid imported art should not break the editor.
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialPixelDataToken]);
 
   function clearScheduledOutput() {
     if (outputTimeoutRef.current) {
@@ -292,6 +366,18 @@ export default function PixelAccessoryEditor({ onPixelDataChange, storageKey, cl
     scheduleEditorOutput(nextPixels, activeGridSize);
   }
 
+  function pushHistorySnapshot() {
+    historyRef.current = [...historyRef.current.slice(-(MAX_HISTORY_STEPS - 1)), pixelsRef.current];
+  }
+
+  function undoLastChange() {
+    const previousPixels = historyRef.current.pop();
+    if (!previousPixels) return;
+    setPreviewPixels(null);
+    shapeStartIndexRef.current = null;
+    updatePixels(previousPixels);
+  }
+
   function paint(index) {
     if (index < 0 || index >= pixelsRef.current.length) return;
 
@@ -303,13 +389,12 @@ export default function PixelAccessoryEditor({ onPixelDataChange, storageKey, cl
     }
 
     if (tool === "fill") {
+      pushHistorySnapshot();
       updatePixels(fillPixels(pixelsRef.current, index, color, gridSize));
       return;
     }
 
-    const nextPixels = [...pixelsRef.current];
-    nextPixels[index] = tool === "eraser" ? EMPTY_PIXEL : color;
-    updatePixels(nextPixels);
+    updatePixels(applyIndexes(pixelsRef.current, [index], tool, color, gridSize, brushSize));
   }
 
   function getPointerIndex(event) {
@@ -331,7 +416,7 @@ export default function PixelAccessoryEditor({ onPixelDataChange, storageKey, cl
 
     if (tool === "pencil" || tool === "eraser") {
       const indexes = lastIndex === null ? [index] : getLineIndexes(lastIndex, index, gridSize);
-      updatePixels(applyIndexes(pixelsRef.current, indexes, tool, color));
+      updatePixels(applyIndexes(pixelsRef.current, indexes, tool, color, gridSize, brushSize));
       return;
     }
 
@@ -347,14 +432,14 @@ export default function PixelAccessoryEditor({ onPixelDataChange, storageKey, cl
     const endIndex = getPointerIndex(event);
     const startIndex = shapeStartIndexRef.current;
     if (startIndex === null || endIndex === -1) return;
-    setPreviewPixels(applyIndexes(pixelsRef.current, getShapeIndexes(tool, startIndex, endIndex, gridSize), tool, color));
+    setPreviewPixels(applyIndexes(pixelsRef.current, getShapeIndexes(tool, startIndex, endIndex, gridSize), tool, color, gridSize, brushSize));
   }
 
   function commitShape(event) {
     const endIndex = getPointerIndex(event);
     const startIndex = shapeStartIndexRef.current;
     if (startIndex !== null && endIndex !== -1) {
-      updatePixels(applyIndexes(pixelsRef.current, getShapeIndexes(tool, startIndex, endIndex, gridSize), tool, color));
+      updatePixels(applyIndexes(pixelsRef.current, getShapeIndexes(tool, startIndex, endIndex, gridSize), tool, color, gridSize, brushSize));
     }
     shapeStartIndexRef.current = null;
     setPreviewPixels(null);
@@ -363,6 +448,7 @@ export default function PixelAccessoryEditor({ onPixelDataChange, storageKey, cl
   function clearPixels() {
     setPreviewPixels(null);
     shapeStartIndexRef.current = null;
+    pushHistorySnapshot();
     updatePixels(Array(gridSize * gridSize).fill(EMPTY_PIXEL));
   }
 
@@ -376,6 +462,7 @@ export default function PixelAccessoryEditor({ onPixelDataChange, storageKey, cl
     setGridSize(nextGridSize);
     setPreviewPixels(null);
     shapeStartIndexRef.current = null;
+    historyRef.current = [];
     pixelsRef.current = emptyPixels;
     setPixels(emptyPixels);
     writePixelDraft(storageKey, nextGridSize, emptyPixels);
@@ -467,23 +554,55 @@ export default function PixelAccessoryEditor({ onPixelDataChange, storageKey, cl
       <div className="pixel-workbench">
         <div className="pixel-layer-note">
           <strong>Camada de desenho</strong>
-          <span>{showGuide ? "O corpo aparece por baixo so como guia." : "Desenho livre, sem guia por baixo."}</span>
+          <span>{showGuide && guideSrc ? "O corpo aparece por baixo so como guia." : "Desenho livre, sem guia por baixo."}</span>
         </div>
 
         <div className="pixel-workspace">
-          <div className="pixel-editor-toolbar" aria-label="Ferramentas do editor">
-            <div className="pixel-tool-group" role="group" aria-label="Ferramentas de pixelart">
-              <button type="button" className={tool === "pencil" ? "active" : ""} onClick={() => setTool("pencil")} aria-label="Pincel" title="Pincel"><Pencil size={18} /></button>
-              <button type="button" className={tool === "fill" ? "active" : ""} onClick={() => setTool("fill")} aria-label="Balde" title="Balde"><PaintBucket size={18} /></button>
-              <button type="button" className={tool === "eyedropper" ? "active" : ""} onClick={() => setTool("eyedropper")} aria-label="Conta-gotas" title="Conta-gotas"><Pipette size={18} /></button>
-              <button type="button" className={tool === "eraser" ? "active" : ""} onClick={() => setTool("eraser")} aria-label="Borracha" title="Borracha"><Eraser size={18} /></button>
-              <button type="button" className={tool === "pan" ? "active" : ""} onClick={() => setTool("pan")} aria-label="Mao" title="Mao"><Hand size={18} /></button>
-              <button type="button" className={tool === "line" ? "active" : ""} onClick={() => setTool("line")} aria-label="Reta" title="Reta"><Minus size={18} /></button>
-              <button type="button" className={tool === "rectangle" ? "active" : ""} onClick={() => setTool("rectangle")} aria-label="Retangulo" title="Retangulo"><Square size={18} /></button>
-              <button type="button" className={tool === "circle" ? "active" : ""} onClick={() => setTool("circle")} aria-label="Circulo" title="Circulo"><Circle size={18} /></button>
+          {controlsOpen ? (
+            <div className="pixel-editor-toolbar" aria-label="Ferramentas do editor">
+              <div className="pixel-floating-toolbar-header">
+                <span>Ferramentas</span>
+                <button type="button" onClick={() => setControlsOpen(false)} aria-label="Esconder ferramentas" title="Esconder ferramentas">
+                  <X size={16} />
+                </button>
+              </div>
+              <div className="pixel-tool-group" role="group" aria-label="Ferramentas de pixelart">
+                <button type="button" className={tool === "pencil" ? "active" : ""} onClick={() => setTool("pencil")} aria-label="Pincel" title="Pincel"><Pencil size={18} /></button>
+                <button type="button" className={tool === "fill" ? "active" : ""} onClick={() => setTool("fill")} aria-label="Balde" title="Balde"><PaintBucket size={18} /></button>
+                <button type="button" className={tool === "eyedropper" ? "active" : ""} onClick={() => setTool("eyedropper")} aria-label="Conta-gotas" title="Conta-gotas"><Pipette size={18} /></button>
+                <button type="button" className={tool === "eraser" ? "active" : ""} onClick={() => setTool("eraser")} aria-label="Borracha" title="Borracha"><Eraser size={18} /></button>
+                <button type="button" className={tool === "pan" ? "active" : ""} onClick={() => setTool("pan")} aria-label="Mao" title="Mao"><Hand size={18} /></button>
+                <button type="button" className={tool === "line" ? "active" : ""} onClick={() => setTool("line")} aria-label="Reta" title="Reta"><Minus size={18} /></button>
+                <button type="button" className={tool === "rectangle" ? "active" : ""} onClick={() => setTool("rectangle")} aria-label="Retangulo" title="Retangulo"><Square size={18} /></button>
+                <button type="button" className={tool === "circle" ? "active" : ""} onClick={() => setTool("circle")} aria-label="Circulo" title="Circulo"><Circle size={18} /></button>
+              </div>
+              <div className="pixel-brush-control">
+                <span>{brushSize} px</span>
+                <div className="pixel-brush-buttons" role="group" aria-label="Area do pincel">
+                  {BRUSH_SIZE_OPTIONS.map((size) => (
+                    <button
+                      type="button"
+                      key={size}
+                      className={brushSize === size ? "active" : ""}
+                      onClick={() => setBrushSize(size)}
+                      aria-label={`Pincel com ${size} pixels`}
+                      title={`${size} pixels`}
+                    >
+                      {size}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="pixel-tool-actions">
+                <button type="button" className="secondary pixel-clear-tool" onClick={undoLastChange} disabled={!historyRef.current.length} aria-label="Desfazer" title="Desfazer"><RotateCcw size={18} /></button>
+                <button type="button" className="secondary pixel-clear-tool" onClick={clearPixels} aria-label="Limpar" title="Limpar"><Trash2 size={18} /></button>
+              </div>
             </div>
-            <button type="button" className="secondary pixel-clear-tool" onClick={clearPixels} aria-label="Limpar" title="Limpar"><Trash2 size={18} /></button>
-          </div>
+          ) : (
+            <button type="button" className="pixel-tool-fab" onClick={() => setControlsOpen(true)} aria-label="Mostrar ferramentas" title="Mostrar ferramentas">
+              <SlidersHorizontal size={20} />
+            </button>
+          )}
 
           <div className="pixel-canvas-scroll" ref={scrollRef}>
             <div
@@ -503,11 +622,15 @@ export default function PixelAccessoryEditor({ onPixelDataChange, storageKey, cl
                 setDrawing(true);
                 lastPaintedIndexRef.current = null;
                 if (isShapeTool) {
+                  pushHistorySnapshot();
                   shapeStartIndexRef.current = getPointerIndex(event);
                   updateShapePreview(event);
                   return;
                 }
-                paintPointerPath(event);
+                if (tool === "pencil" || tool === "eraser") {
+                  pushHistorySnapshot();
+                }
+                paintFromPointer(event);
               }}
               onPointerMove={(event) => {
                 if (drawing && tool === "pan") {
@@ -542,7 +665,7 @@ export default function PixelAccessoryEditor({ onPixelDataChange, storageKey, cl
                 lastPaintedIndexRef.current = null;
               }}
             >
-              {showGuide && <img className="pixel-reference-layer" src="/assets/egg-sprites/base/chibi_body.png" alt="" />}
+              {showGuide && guideSrc ? <img className="pixel-reference-layer" src={guideSrc} alt="" /> : null}
               <canvas
                 ref={pixelCanvasRef}
                 className="pixel-canvas-layer"

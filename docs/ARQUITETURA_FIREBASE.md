@@ -185,9 +185,9 @@ O painel admin mostra informacoes que nao aparecem para alunos:
 
 ## Avatar chibi e batalha
 
-O avatar atual e um chibi cabecao personalizavel desenhado em `src/components/AvatarPreview.jsx`, sem spritesheet e sem recorte automatico. Modelos PNG para desenhar novos itens ficam em `assets/egg-templates/`, e sprites finais carregados pelo app ficam em `public/assets/egg-sprites/`.
+O avatar atual e um chibi cabecao personalizavel renderizado em `src/components/AvatarPreview.jsx`, sem spritesheet e sem recorte automatico. Modelos PNG em `assets/egg-templates/` servem apenas como referencia externa; os itens finais sao criados na oficina de pixel art e carregados do Firebase.
 
-A lista exibida pelo app fica em `src/data/avatarItems.json`. Precos tambem ficam no frontend, no campo `price` de cada item. No Firestore o usuario guarda apenas `coins` e `ownedAvatarItems`.
+A lista exibida pelo app vem das colecoes `avatarItems` e `customAccessoryRequests` publicados. Precos e categorias dos itens aprovados ficam no Firebase; no documento do usuario ficam `coins`, `ownedAvatarItems` e a selecao atual do avatar.
 
 O avatar usa atributos simples:
 

@@ -34,7 +34,41 @@ http://localhost:5173
 npm run dev
 npm run build
 npm run preview
+npm run deploy:hosting
 ```
+
+## Deploy no Firebase Hosting
+
+O deploy manual usa o projeto Firebase configurado em `.firebaserc`:
+
+```bash
+npm run deploy:hosting
+```
+
+O deploy automatico esta configurado em `.github/workflows/firebase-hosting-prod.yml`.
+Quando houver push para a branch `prod`, o GitHub Actions roda `npm ci`, `npm run build` e publica o conteudo de `dist` no Firebase Hosting.
+
+Comando de producao:
+
+```bash
+git push origin prod
+```
+
+Antes do primeiro deploy automatico, cadastre no GitHub estes secrets:
+
+```txt
+FIREBASE_SERVICE_ACCOUNT_FISIQUESTING
+VITE_FIREBASE_API_KEY
+VITE_FIREBASE_AUTH_DOMAIN
+VITE_FIREBASE_PROJECT_ID
+VITE_FIREBASE_STORAGE_BUCKET
+VITE_FIREBASE_MESSAGING_SENDER_ID
+VITE_FIREBASE_APP_ID
+VITE_FIREBASE_DATABASE_URL
+```
+
+`FIREBASE_SERVICE_ACCOUNT_FISIQUESTING` deve conter o JSON de uma service account com permissao de deploy no Firebase Hosting do projeto `fisiquesting`.
+Os demais secrets sao os mesmos valores usados no `.env` local.
 
 ## Estrutura
 

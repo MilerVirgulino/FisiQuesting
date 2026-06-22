@@ -2,6 +2,7 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
+    "deploy:hosting": "npm run build && firebase deploy --only hosting",
     "preview": "vite preview --host 0.0.0.0",
     "export:vibecoding": "node C:/Users/Miler/Documents/scripts/export-vibecoding-history.js"
   },

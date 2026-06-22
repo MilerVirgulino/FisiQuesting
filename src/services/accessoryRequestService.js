@@ -1,4 +1,5 @@
 import {
+  addDoc,
   collection,
   deleteDoc,
   doc,
@@ -77,11 +78,61 @@ export function updateAccessoryRequestStatus(requestId, status) {
 }
 
 export async function updateAccessoryRequestDetails(requestId, details) {
+  if (details.pixelData) {
+    const pixelValidation = validatePixelData(details.pixelData);
+    if (!pixelValidation.valid) {
+      throw new Error(pixelValidation.errors.join(" "));
+    }
+  }
+
   await updateDoc(doc(db, "customAccessoryRequests", requestId), {
     ...details,
     updatedAt: serverTimestamp()
   });
   clearAvatarCatalogCache();
+}
+
+export async function createAdminAccessoryRequestCopy(source, { title, pixelData }) {
+  const pixelValidation = validatePixelData(pixelData);
+  if (!pixelValidation.valid) {
+    throw new Error(pixelValidation.errors.join(" "));
+  }
+
+  const normalizedCategory = ["accessories", "emojis"].includes(source.category)
+    ? source.category
+    : "accessories";
+  const safeTitle = String(title || `${source.title || "Criacao"} - copia`).trim();
+  const fileName = `${safeTitle
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "") || "arte-copiada"}.png`;
+
+  const created = await addDoc(collection(db, "customAccessoryRequests"), {
+    userId: source.userId || "",
+    userName: source.userName || source.userEmail || "Admin",
+    userEmail: source.userEmail || "",
+    grade: source.grade || "",
+    className: source.className || "",
+    title: safeTitle,
+    description: source.description || "Copia criada pelo professor a partir de outra arte.",
+    pixelData,
+    imageDataUrl: "",
+    src: "",
+    fileName,
+    category: normalizedCategory,
+    pricePaid: 0,
+    status: "pending",
+    votes: 0,
+    duplicatedFromId: source.duplicatedFromId || source.id || "",
+    createdByAdmin: true,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  });
+
+  clearAvatarCatalogCache();
+  return created.id;
 }
 
 export async function approveAccessoryRequestToShop(request, { price, categoryKey }) {

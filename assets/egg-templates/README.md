@@ -24,5 +24,6 @@ assets/egg-templates/
     pets/
 ```
 
-Quando o item estiver pronto para entrar no app, copie o PNG final para `public/assets/egg-sprites/<categoria>/`.
-Depois cadastre o item em `src/data/avatarItems.json`, usando o mesmo `id` do nome do arquivo.
+Quando o item estiver pronto para entrar no app, use a oficina de pixel art do proprio sistema e envie a criacao para avaliacao. O admin aprova a criacao, escolhe a categoria e o item passa a vir do Firebase.
+
+O app nao carrega mais sprites finais locais nem catalogo local de itens.

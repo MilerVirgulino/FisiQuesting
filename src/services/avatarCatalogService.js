@@ -1,6 +1,8 @@
 import {
   collection,
   getDocs,
+  query,
+  where,
 } from "firebase/firestore";
 import { db } from "../firebase-init";
 import { getRenderablePixelArtSrc } from "../utils/pixelArt";
@@ -9,7 +11,7 @@ const CACHE_KEY = "fisioquest.avatarCatalog.v2";
 const CACHE_TTL_MS = 1000 * 60 * 10;
 
 const categoryDefinitions = [
-  { key: "base", label: "Base", folder: "base", defaultId: "chibi_body" },
+  { key: "base", label: "Base", folder: "base", defaultId: "" },
   { key: "hair", label: "Cabelo", folder: "hair", defaultId: "hair_none" },
   { key: "shirts", label: "Camisa", folder: "shirts", defaultId: "shirt_none" },
   { key: "eyes", label: "Olhos", folder: "eyes", defaultId: "eyes_none" },
@@ -21,7 +23,6 @@ const categoryDefinitions = [
 ];
 
 const defaultItems = [
-  { id: "chibi_body", categoryKey: "base", label: "Chibi cabecao", source: "png", price: 0, defaultItem: true, active: true },
   { id: "hair_none", categoryKey: "hair", label: "Nenhum", source: "svg", price: 0, defaultItem: true, active: true },
   { id: "shirt_none", categoryKey: "shirts", label: "Nenhuma", source: "svg", price: 0, defaultItem: true, active: true },
   { id: "eyes_none", categoryKey: "eyes", label: "Nenhum", source: "svg", price: 0, defaultItem: true, active: true },
@@ -131,9 +132,7 @@ export function getItemSrc(item) {
   if (item.pixelData || item.imageDataUrl || item.src) {
     return getRenderablePixelArtSrc(item);
   }
-  if (item.src) return item.src;
-  if (!item.folder || !item.id) return "";
-  return `/assets/egg-sprites/${item.folder}/${item.id}.png`;
+  return "";
 }
 
 export async function loadAvatarCatalog({ force = false } = {}) {
@@ -151,7 +150,7 @@ export async function loadAvatarCatalog({ force = false } = {}) {
 
   loadingCatalog = Promise.allSettled([
     getDocs(collection(db, "avatarItems")),
-    getDocs(collection(db, "customAccessoryRequests"))
+    getDocs(query(collection(db, "customAccessoryRequests"), where("status", "==", "listed")))
   ])
     .then((results) => {
       const [avatarItemsResult, requestsResult] = results;
@@ -241,6 +240,6 @@ export function buildAvatarItemFromRequest(request, { price, categoryKey = "acce
     shopCategoryKey: category.key,
     shopCategoryLabel: category.label,
     shopFolder: category.folder,
-    price: Number(price || 0),
+    price: category.key === "base" ? 0 : Number(price || 0),
   };
 }

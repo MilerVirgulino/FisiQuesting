@@ -1,8 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { defaultAvatar, getAvatarOption, loadAvatarCatalog, usesPngSprite } from "../services/avatarCatalogService";
 
-const LOCAL_CHIBI_BASE_SRC = "/assets/egg-sprites/base/chibi_body.png";
-
 function normalizeAvatar(avatar) {
   return {
     ...defaultAvatar,
@@ -42,6 +40,14 @@ export default function AvatarPreview({ avatar, size = 128 }) {
   }, []);
 
   const normalized = normalizeAvatar(avatar);
+  if (catalog?.categories) {
+    catalog.categories.forEach((category) => {
+      const options = Object.values(catalog.byCategory?.[category.key]?.items || {});
+      if (options.length && !options.some((option) => option.id === normalized[category.key])) {
+        normalized[category.key] = options[0].id;
+      }
+    });
+  }
   const hasPngBase = usesPngSprite(catalog, "base", normalized.base);
   const hasPngHair = usesPngSprite(catalog, "hair", normalized.hair);
   const hasPngEyes = usesPngSprite(catalog, "eyes", normalized.eyes);
@@ -55,11 +61,7 @@ export default function AvatarPreview({ avatar, size = 128 }) {
     <div className="modular-avatar-preview egg-avatar-preview" style={{ width: size, height: size }}>
       <svg viewBox="0 0 256 256" role="img" aria-label="Avatar chibi cabecao">
         <ellipse cx="128" cy="229" rx="56" ry="10" fill="#000000" opacity="0.08" />
-        {hasPngBase ? (
-          <EggSpriteLayer catalog={catalog} category="base" id={normalized.base} />
-        ) : (
-          <image href={LOCAL_CHIBI_BASE_SRC} x="0" y="0" width="256" height="256" preserveAspectRatio="xMidYMid meet" style={{ imageRendering: "pixelated" }} />
-        )}
+        {hasPngBase ? <EggSpriteLayer catalog={catalog} category="base" id={normalized.base} /> : null}
         {hasPngHair ? <EggSpriteLayer catalog={catalog} category="hair" id={normalized.hair} /> : null}
         {hasPngEyes ? <EggSpriteLayer catalog={catalog} category="eyes" id={normalized.eyes} /> : null}
         {hasPngMouth ? <EggSpriteLayer catalog={catalog} category="mouths" id={normalized.mouths} /> : null}
