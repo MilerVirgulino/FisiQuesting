@@ -70,6 +70,7 @@ service cloud.firestore {
         "correctCount",
         "coins",
         "petCare",
+        "lastWallMessageAt",
         "showcaseSlots",
         "ownedAvatarItems",
         "completedMissionIds",
@@ -82,10 +83,19 @@ service cloud.firestore {
       return userDoc().data.showcaseSlots is int && userDoc().data.showcaseSlots > 0 ? userDoc().data.showcaseSlots : 1;
     }
 
+    function validRequestedClassTag() {
+      return !request.resource.data.keys().hasAny(["requestedClassTag"])
+        || (
+          request.resource.data.requestedClassTag is string
+          && request.resource.data.requestedClassTag.size() <= 80
+        );
+    }
+
     match /users/{userId} {
       allow create: if isSelf(userId)
         && request.resource.data.role == "student"
-        && request.resource.data.status == "pending";
+        && request.resource.data.status == "pending"
+        && validRequestedClassTag();
       allow read: if isSelf(userId) || isAdmin() || isApproved();
       allow update: if isAdmin()
         || (
@@ -102,6 +112,11 @@ service cloud.firestore {
     }
 
     match /dailyQuests/{questId} {
+      allow read: if isApproved();
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /classrooms/{classroomId} {
       allow read: if isApproved();
       allow create, update, delete: if isAdmin();
     }
@@ -220,6 +235,35 @@ service cloud.firestore {
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["status", "readAt", "updatedAt"])
         );
       allow delete: if isAdmin();
+    }
+
+    match /wallMessages/{messageId} {
+      allow read: if isAdmin()
+        || (isApproved() && resource.data.status == "visible")
+        || (signedIn() && resource.data.authorId == request.auth.uid);
+      allow create: if isApproved()
+        && request.resource.data.keys().hasOnly([
+          "authorId",
+          "authorName",
+          "authorRole",
+          "authorGrade",
+          "authorClassName",
+          "authorAvatar",
+          "text",
+          "status",
+          "highlighted",
+          "cost",
+          "createdAt",
+          "updatedAt"
+        ])
+        && request.resource.data.authorId == request.auth.uid
+        && request.resource.data.text is string
+        && request.resource.data.text.size() > 0
+        && request.resource.data.text.size() <= 240
+        && request.resource.data.status == "visible"
+        && request.resource.data.cost is number
+        && request.resource.data.highlighted == isAdmin();
+      allow update, delete: if isAdmin();
     }
 
     match /missionAttempts/{attemptId} {

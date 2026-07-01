@@ -7,7 +7,7 @@ import {
 import { db } from "../firebase-init";
 import { colorsToPixelData, getRenderablePixelArtSrc } from "../utils/pixelArt";
 
-const CACHE_KEY = "fisioquest.avatarCatalog.v4";
+const CACHE_KEY = "fisioquest.avatarCatalog.v5";
 const CACHE_TTL_MS = 1000 * 60 * 10;
 
 const categoryDefinitions = [
@@ -111,6 +111,7 @@ let loadingCatalog = null;
 
 export const defaultAvatar = Object.fromEntries(categoryDefinitions.map((category) => [category.key, category.defaultId]));
 defaultAvatar.kind = "chibi";
+defaultAvatar.accessories2 = "accessories_none";
 
 function canUseLocalStorage() {
   return typeof window !== "undefined" && window.localStorage;
@@ -160,6 +161,7 @@ function normalizeItem(docId, data) {
     categoryLabel: data.categoryLabel || category?.label || data.categoryKey,
     folder: data.folder || category?.folder || data.categoryKey,
     label: data.label || id,
+    description: data.description || "",
     source,
     src: data.src || "",
     imageDataUrl: data.imageDataUrl || "",

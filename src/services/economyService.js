@@ -5,7 +5,8 @@ export const defaultEconomyConfig = {
   avatarItemPrice: 25,
   customCreationPrice: 150,
   emojiSendPrice: 5,
-  showcaseSlotPrice: 200
+  showcaseSlotPrice: 200,
+  wallMessagePrice: 10
 };
 
 export async function getEconomyConfig() {
@@ -21,6 +22,7 @@ export async function saveEconomyConfig(config) {
       customCreationPrice: Number(config.customCreationPrice || 0),
       emojiSendPrice: Number(config.emojiSendPrice || 0),
       showcaseSlotPrice: Number(config.showcaseSlotPrice || 0),
+      wallMessagePrice: Number(config.wallMessagePrice || 0),
       updatedAt: serverTimestamp()
     },
     { merge: true }

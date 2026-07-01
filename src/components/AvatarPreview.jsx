@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { defaultAvatar, getAvatarOption, loadAvatarCatalog, usesPngSprite } from "../services/avatarCatalogService";
+import { normalizeAvatarLayerOrder } from "../utils/avatarLayers";
 
 function normalizeAvatar(avatar) {
   return {
@@ -9,7 +10,9 @@ function normalizeAvatar(avatar) {
     mouths: avatar?.mouths || avatar?.mouth || defaultAvatar.mouths,
     pants: avatar?.pants || defaultAvatar.pants,
     shoes: avatar?.shoes || defaultAvatar.shoes,
-    pets: avatar?.pets || defaultAvatar.pets
+    pets: avatar?.pets || defaultAvatar.pets,
+    accessories2: avatar?.accessories2 || defaultAvatar.accessories2,
+    layerOrder: normalizeAvatarLayerOrder(avatar?.layerOrder)
   };
 }
 
@@ -63,27 +66,34 @@ export default function AvatarPreview({ avatar, size = 128, catalog: providedCat
   const hasPngPants = usesPngSprite(activeCatalog, "pants", normalized.pants);
   const hasPngShoes = usesPngSprite(activeCatalog, "shoes", normalized.shoes);
   const hasPngAccessories = usesPngSprite(activeCatalog, "accessories", normalized.accessories);
+  const hasPngAccessories2 = usesPngSprite(activeCatalog, "accessories", normalized.accessories2);
   const hasPngPets = usesPngSprite(activeCatalog, "pets", normalized.pets);
+  const layers = {
+    base: hasPngBase ? <EggSpriteLayer key="base" catalog={activeCatalog} category="base" id={normalized.base} /> : null,
+    hair: hasPngHair ? <EggSpriteLayer key="hair" catalog={activeCatalog} category="hair" id={normalized.hair} /> : null,
+    eyes: hasPngEyes ? <EggSpriteLayer key="eyes" catalog={activeCatalog} category="eyes" id={normalized.eyes} /> : null,
+    mouths: hasPngMouth ? <EggSpriteLayer key="mouths" catalog={activeCatalog} category="mouths" id={normalized.mouths} /> : null,
+    shirts: hasPngShirt ? <EggSpriteLayer key="shirts" catalog={activeCatalog} category="shirts" id={normalized.shirts} /> : null,
+    pants: hasPngPants ? <EggSpriteLayer key="pants" catalog={activeCatalog} category="pants" id={normalized.pants} /> : null,
+    shoes: hasPngShoes ? <EggSpriteLayer key="shoes" catalog={activeCatalog} category="shoes" id={normalized.shoes} /> : null,
+    accessories: (
+      <React.Fragment key="accessories">
+        {hasPngAccessories ? <EggSpriteLayer catalog={activeCatalog} category="accessories" id={normalized.accessories} /> : null}
+        {hasPngAccessories2 ? <EggSpriteLayer catalog={activeCatalog} category="accessories" id={normalized.accessories2} /> : null}
+      </React.Fragment>
+    ),
+    pets: hasPngPets ? <EggSpriteLayer key="pets" catalog={activeCatalog} category="pets" id={normalized.pets} /> : null
+  };
 
   return (
     <div className="modular-avatar-preview egg-avatar-preview" style={{ width: size, height: size }}>
       <svg viewBox="0 0 256 256" role="img" aria-label="Avatar chibi cabecao">
         <ellipse cx="128" cy="229" rx="56" ry="10" fill="#000000" opacity="0.08" />
-        {hasPngBase ? <EggSpriteLayer catalog={activeCatalog} category="base" id={normalized.base} /> : null}
-        {hasPngHair ? <EggSpriteLayer catalog={activeCatalog} category="hair" id={normalized.hair} /> : null}
-        {hasPngEyes ? <EggSpriteLayer catalog={activeCatalog} category="eyes" id={normalized.eyes} /> : null}
-        {hasPngMouth ? <EggSpriteLayer catalog={activeCatalog} category="mouths" id={normalized.mouths} /> : null}
-        {normalized.eyes !== "eyes_none" && (
-          <>
-            <ellipse cx="89" cy="127" rx="10" ry="5" fill="#fb7185" opacity="0.35" />
-            <ellipse cx="167" cy="127" rx="10" ry="5" fill="#fb7185" opacity="0.35" />
-          </>
-        )}
-        {hasPngShirt ? <EggSpriteLayer catalog={activeCatalog} category="shirts" id={normalized.shirts} /> : null}
-        {hasPngPants ? <EggSpriteLayer catalog={activeCatalog} category="pants" id={normalized.pants} /> : null}
-        {hasPngShoes ? <EggSpriteLayer catalog={activeCatalog} category="shoes" id={normalized.shoes} /> : null}
-        {hasPngAccessories ? <EggSpriteLayer catalog={activeCatalog} category="accessories" id={normalized.accessories} /> : null}
-        {hasPngPets ? <EggSpriteLayer catalog={activeCatalog} category="pets" id={normalized.pets} /> : null}
+        {layers.base}
+        {layers.hair}
+        {layers.eyes}
+        {layers.mouths}
+        {normalized.layerOrder.map((categoryKey) => layers[categoryKey])}
       </svg>
     </div>
   );

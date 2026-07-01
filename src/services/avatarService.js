@@ -1,5 +1,6 @@
 import { doc, serverTimestamp, updateDoc } from "firebase/firestore";
 import { db } from "../firebase-init";
+import { normalizeAvatarLayerOrder } from "../utils/avatarLayers";
 import { baseBattleStats, normalizeBattleStats } from "./avatarStats";
 
 export function saveUserAvatar(userId, avatar) {
@@ -16,7 +17,9 @@ export function saveUserAvatar(userId, avatar) {
       shoes: avatar.shoes || "shoes_none",
       hair: avatar.hair || null,
       accessories: avatar.accessories || "accessories_none",
+      accessories2: avatar.accessories2 || "accessories_none",
       pets: avatar.pets || "pets_none",
+      layerOrder: normalizeAvatarLayerOrder(avatar.layerOrder),
       level: Number(avatar.level || 1),
       attack: Number(stats.attack || baseBattleStats.attack),
       defense: Number(stats.defense || baseBattleStats.defense),

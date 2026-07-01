@@ -5,7 +5,7 @@ import { useAuth } from "../services/authService.jsx";
 export default function LoginPage() {
   const { firebaseUser, isApproved, login, register } = useAuth();
   const [mode, setMode] = useState("login");
-  const [form, setForm] = useState({ name: "", email: "", password: "" });
+  const [form, setForm] = useState({ name: "", email: "", password: "", confirmPassword: "", requestedClassTag: "" });
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -20,6 +20,10 @@ export default function LoginPage() {
       if (mode === "login") {
         await login(form);
       } else {
+        if (form.password !== form.confirmPassword) {
+          setError("As senhas nao conferem. Digite novamente antes de criar o cadastro.");
+          return;
+        }
         await register(form);
       }
     } catch (exception) {
@@ -37,14 +41,26 @@ export default function LoginPage() {
         <h1>Aprenda Física resolvendo desafios curtos todos os dias.</h1>
         <form onSubmit={handleSubmit} className="auth-form">
           {mode === "register" && (
-            <label>
-              Nome
-              <input
-                value={form.name}
-                onChange={(event) => setForm({ ...form, name: event.target.value })}
-                required
-              />
-            </label>
+            <>
+              <label>
+                Nome
+                <input
+                  value={form.name}
+                  onChange={(event) => setForm({ ...form, name: event.target.value })}
+                  required
+                />
+              </label>
+              <label>
+                Turma indicada
+                <input
+                  value={form.requestedClassTag}
+                  onChange={(event) => setForm({ ...form, requestedClassTag: event.target.value })}
+                  placeholder="Ex.: 1 ano A, 2 ano B, 3 ano C"
+                  maxLength={80}
+                />
+                <small>Essa tag ajuda o professor a encontrar sua turma. Ela nao aloca voce automaticamente.</small>
+              </label>
+            </>
           )}
           <label>
             E-mail
@@ -65,6 +81,18 @@ export default function LoginPage() {
               required
             />
           </label>
+          {mode === "register" && (
+            <label>
+              Repetir senha
+              <input
+                type="password"
+                minLength={6}
+                value={form.confirmPassword}
+                onChange={(event) => setForm({ ...form, confirmPassword: event.target.value })}
+                required
+              />
+            </label>
+          )}
           {error && <p className="error-text">{error}</p>}
           <button type="submit" disabled={busy}>
             {busy ? "Aguarde..." : mode === "login" ? "Entrar" : "Criar cadastro"}

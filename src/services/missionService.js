@@ -47,8 +47,12 @@ function classNameAliases(value) {
 }
 
 function isSameGrade(left, right) {
-  const leftNumber = normalizeGradeText(left).match(/[1-3]/)?.[0] || "";
-  const rightNumber = normalizeGradeText(right).match(/[1-3]/)?.[0] || "";
+  const normalizedLeft = normalizeGradeText(left);
+  const normalizedRight = normalizeGradeText(right);
+  if (normalizedLeft && normalizedRight && normalizedLeft === normalizedRight) return true;
+
+  const leftNumber = normalizedLeft.match(/[1-3]/)?.[0] || "";
+  const rightNumber = normalizedRight.match(/[1-3]/)?.[0] || "";
   return Boolean(leftNumber && rightNumber && leftNumber === rightNumber);
 }
 

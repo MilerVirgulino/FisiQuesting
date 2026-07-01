@@ -25,6 +25,7 @@ import {
 } from "./avatarCatalogService";
 import { getOwnedAvatarItems, userOwnsAvatarItem } from "./avatarShopService";
 import { getEconomyConfig } from "./economyService";
+import { normalizeAvatarLayerOrder } from "../utils/avatarLayers";
 
 export const FREE_SHOWCASE_SLOTS = 1;
 export const MAX_SHOWCASE_SLOTS = 8;
@@ -42,7 +43,12 @@ export function getShowcaseSlotCount(profile) {
 }
 
 function normalizeShowcaseAvatar(avatar, catalog, profile) {
-  const normalized = { ...defaultAvatar, ...(avatar || {}), kind: "chibi" };
+  const normalized = {
+    ...defaultAvatar,
+    ...(avatar || {}),
+    kind: "chibi",
+    layerOrder: normalizeAvatarLayerOrder(avatar?.layerOrder)
+  };
 
   getAvatarCategories(catalog).forEach((category) => {
     const options = getAvatarOptions(catalog, category)
@@ -53,12 +59,17 @@ function normalizeShowcaseAvatar(avatar, catalog, profile) {
     }
   });
 
+  if (!userOwnsAvatarItem(profile, "accessories", normalized.accessories2, catalog)) {
+    normalized.accessories2 = defaultAvatar.accessories2;
+  }
+
   return normalized;
 }
 
 function buildItemCredits(equippedItems, catalog) {
   return Object.entries(equippedItems || {}).reduce((credits, [categoryKey, itemId]) => {
-    const item = getAvatarOption(catalog, categoryKey, itemId);
+    const lookupCategoryKey = categoryKey === "accessories2" ? "accessories" : categoryKey;
+    const item = getAvatarOption(catalog, lookupCategoryKey, itemId);
     if (!item || item.source === "svg") return credits;
 
     credits[categoryKey] = {
@@ -66,8 +77,8 @@ function buildItemCredits(equippedItems, catalog) {
       label: item.label || itemId,
       creatorId: item.creatorId || "",
       creatorName: item.creatorName || "criador aprovado",
-      categoryKey,
-      categoryLabel: item.categoryLabel || categoryKey
+      categoryKey: lookupCategoryKey,
+      categoryLabel: categoryKey === "accessories2" ? "Acessorio extra" : item.categoryLabel || lookupCategoryKey
     };
     return credits;
   }, {});
@@ -166,8 +177,11 @@ export async function saveShowcaseLook({ profile, lookId, slotIndex, name, statu
     const itemId = normalizedAvatar[category.key];
     return itemId && !isFreeAvatarItem(catalog, category.key, itemId) && !ownedItems.includes(itemId) && category.key !== "base";
   });
+  const invalidAccessory2 = normalizedAvatar.accessories2
+    && !isFreeAvatarItem(catalog, "accessories", normalizedAvatar.accessories2)
+    && !ownedItems.includes(normalizedAvatar.accessories2);
 
-  if (invalidItem) {
+  if (invalidItem || invalidAccessory2) {
     throw new Error("O look contem item que ainda nao pertence ao aluno.");
   }
 

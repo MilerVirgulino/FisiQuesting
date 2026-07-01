@@ -65,13 +65,15 @@ export function useAuth() {
   return context;
 }
 
-async function register({ name, email, password }) {
+async function register({ name, email, password, requestedClassTag = "" }) {
   const credential = await createUserWithEmailAndPassword(auth, email, password);
   await updateProfile(credential.user, { displayName: name });
+  const normalizedRequestedClassTag = String(requestedClassTag || "").trim().slice(0, 80);
 
   await setDoc(doc(db, "users", credential.user.uid), {
     name,
     email,
+    requestedClassTag: normalizedRequestedClassTag,
     role: "student",
     status: "pending",
     totalXp: 0,

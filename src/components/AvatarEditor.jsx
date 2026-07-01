@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import AvatarLayerOrderEditor from "./AvatarLayerOrderEditor.jsx";
 import AvatarInventoryPicker from "./AvatarInventoryPicker.jsx";
 import AvatarPreview from "./AvatarPreview.jsx";
 import ChoicePills from "./ChoicePills.jsx";
@@ -15,6 +16,7 @@ import { ACCESSORY_REQUEST_PRICE, createAccessoryRequest } from "../services/acc
 import { saveUserAvatar } from "../services/avatarService";
 import { buyAvatarItem, userOwnsAvatarItem } from "../services/avatarShopService";
 import { getEconomyConfig } from "../services/economyService";
+import { moveAvatarLayer, normalizeAvatarLayerOrder } from "../utils/avatarLayers";
 import { pixelDataToDataUrl } from "../utils/pixelArt";
 
 const ACCESSORY_DRAFT_STORAGE_KEY = "fisioquest.pixelAccessoryDraft";
@@ -30,7 +32,9 @@ function normalizeAvatar(avatar, catalog) {
     mouths: avatar?.mouths || avatar?.mouth || defaultAvatar.mouths,
     pants: avatar?.pants || defaultAvatar.pants,
     shoes: avatar?.shoes || defaultAvatar.shoes,
-    pets: avatar?.pets || defaultAvatar.pets
+    pets: avatar?.pets || defaultAvatar.pets,
+    accessories2: avatar?.accessories2 || defaultAvatar.accessories2,
+    layerOrder: normalizeAvatarLayerOrder(avatar?.layerOrder)
   };
 
   avatarCategories.forEach((category) => {
@@ -45,7 +49,7 @@ function normalizeAvatar(avatar, catalog) {
 }
 
 function getEquipableAvatar(avatar, profile, catalog) {
-  return getAvatarCategories(catalog).reduce((current, category) => {
+  const normalized = getAvatarCategories(catalog).reduce((current, category) => {
     if (userOwnsAvatarItem(profile, category.key, current[category.key], catalog)) {
       return current;
     }
@@ -55,6 +59,12 @@ function getEquipableAvatar(avatar, profile, catalog) {
       [category.key]: getAvatarOptions(catalog, category)[0]?.id || defaultAvatar[category.key] || ""
     };
   }, avatar);
+
+  if (!userOwnsAvatarItem(profile, "accessories", normalized.accessories2, catalog)) {
+    normalized.accessories2 = defaultAvatar.accessories2;
+  }
+
+  return normalized;
 }
 
 export default function AvatarEditor({ userId, profile, onSaved }) {
@@ -62,6 +72,7 @@ export default function AvatarEditor({ userId, profile, onSaved }) {
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [avatar, setAvatar] = useState(() => normalizeAvatar(profile?.avatar, null));
   const [activeTab, setActiveTab] = useState("customize");
+  const [activeShopCategoryKey, setActiveShopCategoryKey] = useState("");
   const [saving, setSaving] = useState(false);
   const [buyingItemId, setBuyingItemId] = useState("");
   const [shopMessage, setShopMessage] = useState("");
@@ -95,6 +106,7 @@ export default function AvatarEditor({ userId, profile, onSaved }) {
         .map((option) => ({ ...option, category }))
     }))
     .filter((section) => section.items.length > 0);
+  const activeShopSection = shopSections.find((section) => section.category.key === activeShopCategoryKey) || shopSections[0] || null;
   const requestPreviewSrc = useMemo(() => {
     if (!requestPixelData) return "";
     return pixelDataToDataUrl(requestPixelData);
@@ -125,6 +137,17 @@ export default function AvatarEditor({ userId, profile, onSaved }) {
       active = false;
     };
   }, [profile?.avatar]);
+
+  useEffect(() => {
+    if (!shopSections.length) {
+      setActiveShopCategoryKey("");
+      return;
+    }
+
+    if (!shopSections.some((section) => section.category.key === activeShopCategoryKey)) {
+      setActiveShopCategoryKey(shopSections[0].category.key);
+    }
+  }, [activeShopCategoryKey, shopSections]);
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -248,7 +271,18 @@ export default function AvatarEditor({ userId, profile, onSaved }) {
               catalog={catalog}
               profile={profile}
               avatar={equipableAvatar}
-              onChange={(categoryKey, itemId) => setAvatar({ ...avatar, [categoryKey]: itemId })}
+              onChange={(categoryKey, itemId, avatarKey = categoryKey) => setAvatar((current) => ({ ...current, [avatarKey]: itemId }))}
+            />
+
+            <AvatarLayerOrderEditor
+              categories={avatarCategories}
+              catalog={catalog}
+              avatar={equipableAvatar}
+              order={equipableAvatar.layerOrder}
+              onMove={(categoryKey, direction) => setAvatar((current) => ({
+                ...current,
+                layerOrder: moveAvatarLayer(current.layerOrder || equipableAvatar.layerOrder, categoryKey, direction)
+              }))}
             />
 
             <button type="submit" disabled={saving}>
@@ -260,11 +294,26 @@ export default function AvatarEditor({ userId, profile, onSaved }) {
         {activeTab === "shop" && !catalogLoading && (
           <div className="avatar-shop-list">
             {shopSections.length === 0 && <p className="muted">Voce ja possui todos os itens disponiveis.</p>}
-            {shopSections.map((section) => (
-              <section className="avatar-shop-section" key={section.category.key}>
-                <h3>{section.category.label}</h3>
+            {shopSections.length > 0 && (
+              <>
+                <div className="avatar-inventory-tabs" role="tablist" aria-label="Categorias da loja">
+                  {shopSections.map(({ category, items }) => (
+                    <button
+                      type="button"
+                      key={category.key}
+                      className={activeShopSection?.category.key === category.key ? "active" : ""}
+                      onClick={() => setActiveShopCategoryKey(category.key)}
+                    >
+                      <span>{category.label}</span>
+                      <small>{items.length}</small>
+                    </button>
+                  ))}
+                </div>
+
+                <section className="avatar-shop-section" key={activeShopSection.category.key}>
+                  <h3>{activeShopSection.category.label}</h3>
                 <div className="avatar-shop-section-grid">
-                  {section.items.map((item) => {
+                  {activeShopSection.items.map((item) => {
                     const price = getAvatarItemPrice(catalog, item.category.key, item.id);
                     const canPreviewOnAvatar = item.category.key !== "emojis";
                     const isPreviewing = previewItem?.categoryKey === item.category.key && previewItem?.itemId === item.id;
@@ -308,7 +357,8 @@ export default function AvatarEditor({ userId, profile, onSaved }) {
                   })}
                 </div>
               </section>
-            ))}
+              </>
+            )}
           </div>
         )}
 

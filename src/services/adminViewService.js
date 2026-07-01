@@ -1,8 +1,5 @@
 const STORAGE_KEY = "fisioquest.adminClassView";
 
-export const adminViewGradeOptions = ["1 ano", "2 ano", "3 ano"];
-export const adminViewClassOptions = ["A", "B", "C", "D", "E"];
-
 export const defaultAdminClassView = {
   grade: "1 ano",
   className: "A"
@@ -29,8 +26,8 @@ export function writeAdminClassView(view) {
 
 export function normalizeAdminClassView(view) {
   return {
-    grade: adminViewGradeOptions.includes(view?.grade) ? view.grade : defaultAdminClassView.grade,
-    className: adminViewClassOptions.includes(view?.className) ? view.className : defaultAdminClassView.className
+    grade: String(view?.grade || defaultAdminClassView.grade).trim(),
+    className: String(view?.className || defaultAdminClassView.className).trim()
   };
 }
 

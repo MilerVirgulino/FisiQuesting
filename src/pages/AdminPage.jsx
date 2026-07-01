@@ -26,15 +26,26 @@ import { createMission, deleteMission, listAllMissions, updateMission } from "..
 import { createQuestion, deleteQuestion, listAllQuestions, updateQuestion } from "../services/questionService";
 import { getSocialConfig, saveSocialConfig, socialVisibilityOptions } from "../services/socialService";
 import { defaultEconomyConfig, getEconomyConfig, saveEconomyConfig } from "../services/economyService";
+import { deleteWallMessage, listWallMessages, setWallMessageStatus } from "../services/wallService";
+import { defaultWeeklyRankingConfig, deleteWeeklyRankingConfig, getWeeklyRankingConfig, saveWeeklyRankingConfig } from "../services/analyticsService";
+import {
+  buildClassroomOptions,
+  classroomKey,
+  createClassroom,
+  deleteClassroom,
+  fallbackClassOptions,
+  fallbackGradeOptions,
+  listClassrooms
+} from "../services/classroomService";
 import { getRenderablePixelArtSrc } from "../utils/pixelArt";
-import { getAvatarOptions, loadAvatarCatalog } from "../services/avatarCatalogService";
+import { defaultAvatar, getAvatarOptions, loadAvatarCatalog } from "../services/avatarCatalogService";
+import { getLevelInfo } from "../utils/levels";
+import { normalizeAvatarLayerOrder } from "../utils/avatarLayers";
 
 const areas = ["Mecanica", "Termologia", "Optica", "Eletricidade", "Ondulatoria", "Fisica Moderna"];
 const difficulties = ["facil", "medio", "dificil"];
-const gradeOptions = ["1 ano", "2 ano", "3 ano"];
-const classOptions = ["A", "B", "C", "D", "E"];
-const allGradeOptions = [{ value: "", label: "Todas" }, ...gradeOptions.map((grade) => ({ value: grade, label: grade }))];
-const allClassOptions = [{ value: "", label: "Todas" }, ...classOptions.map((className) => ({ value: className, label: className }))];
+const defaultGradeOptions = fallbackGradeOptions;
+const defaultClassOptions = fallbackClassOptions;
 const areaOptions = areas.map((area) => ({ value: area, label: area }));
 const areaFilterOptions = [{ value: "", label: "Todos" }, ...areaOptions];
 const difficultyOptions = difficulties.map((difficulty) => ({ value: difficulty, label: difficulty }));
@@ -107,6 +118,12 @@ const initialMission = {
   endsAt: ""
 };
 
+const initialClassroom = {
+  name: "",
+  grade: "1 ano",
+  className: "A"
+};
+
 const tabs = [
   { id: "missions", label: "Missoes", icon: RadioTower },
   { id: "questions", label: "Questoes", icon: BookOpen },
@@ -161,6 +178,45 @@ function buildClassStats(users) {
     avgCoins: group.students ? Math.round(group.coins / group.students) : 0,
     participation: group.students ? Math.round((group.activeStudents / group.students) * 100) : 0
   })).sort((a, b) => a.grade.localeCompare(b.grade) || a.className.localeCompare(b.className));
+}
+
+function buildManagedClassrooms(classrooms, classStats) {
+  const groups = new Map();
+
+  classrooms.forEach((classroom) => {
+    if (!classroom.grade || !classroom.className) return;
+    const key = `${classroom.grade} - ${classroom.className}`;
+    groups.set(key, {
+      key,
+      id: classroom.id,
+      grade: classroom.grade,
+      className: classroom.className,
+      name: classroom.name || key,
+      active: classroom.active !== false,
+      source: "firebase",
+      students: 0,
+      approvedStudents: 0,
+      solved: 0,
+      correct: 0,
+      accuracy: 0,
+      participation: 0
+    });
+  });
+
+  classStats.forEach((group) => {
+    const current = groups.get(group.key);
+    groups.set(group.key, {
+      ...group,
+      ...current,
+      ...group,
+      name: current?.name || group.key,
+      source: current?.source || "legacy",
+      id: current?.id || "",
+      active: current?.active ?? true
+    });
+  });
+
+  return [...groups.values()].sort((a, b) => a.grade.localeCompare(b.grade) || a.className.localeCompare(b.className));
 }
 
 function getAccessoryPreviewSrc(item) {
@@ -269,9 +325,181 @@ function buildMissionEvolution({ attempts, missions, users, filters }) {
     .sort((a, b) => a.time - b.time);
 }
 
+function dateFromDateKey(dateKey) {
+  if (!dateKey) return null;
+  const parsed = new Date(`${dateKey}T12:00:00`);
+  return Number.isFinite(parsed.getTime()) ? parsed : null;
+}
+
+function getAttemptDate(attempt) {
+  const submittedMillis = timestampToMillis(attempt.submittedAt);
+  if (submittedMillis) return new Date(submittedMillis);
+  return dateFromDateKey(attempt.dateKey);
+}
+
+function getCurrentWeekInfo(now = new Date()) {
+  const start = new Date(now);
+  const day = start.getDay() || 7;
+  start.setHours(0, 0, 0, 0);
+  start.setDate(start.getDate() - day + 1);
+
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+  end.setHours(23, 59, 59, 999);
+
+  const formatter = new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit" });
+  return {
+    start,
+    end,
+    key: start.toISOString().slice(0, 10),
+    label: `${formatter.format(start)} a ${formatter.format(end)}`
+  };
+}
+
+function buildStudentAnalytics({ users, attempts, filters, weekInfo, attentionThreshold }) {
+  const students = users
+    .filter((user) => user.role !== "admin" && user.status === "approved")
+    .filter((user) => !filters.grade || user.grade === filters.grade)
+    .filter((user) => !filters.className || user.className === filters.className);
+  const studentMap = new Map(students.map((user) => [user.id, {
+    id: user.id,
+    name: user.name || user.email || "Aluno",
+    email: user.email || "",
+    grade: user.grade || "sem serie",
+    className: user.className || "sem turma",
+    totalXp: Number(user.totalXp || 0),
+    level: getLevelInfo(user.totalXp || 0).level,
+    avatar: normalizeRankingAvatar(user.avatar),
+    coins: Number(user.coins || 0),
+    bestStreak: Number(user.bestStreak || 0),
+    solved: Number(user.solvedCount || 0),
+    correct: Number(user.correctCount || 0),
+    missionAttempts: 0,
+    missionSolved: 0,
+    missionCorrect: 0,
+    xpFromMissions: 0,
+    coinsFromMissions: 0,
+    durationSeconds: 0,
+    areas: {},
+    weeklyMissions: 0,
+    weeklySolved: 0,
+    weeklyCorrect: 0,
+    weeklyXp: 0,
+    weeklyCoins: 0
+  }]));
+
+  attempts.forEach((attempt) => {
+    if (!attempt.completed || !studentMap.has(attempt.userId)) return;
+    const student = studentMap.get(attempt.userId);
+    const solved = Number(attempt.solved || 0);
+    const correct = Number(attempt.correct || 0);
+
+    student.missionAttempts += 1;
+    student.missionSolved += solved;
+    student.missionCorrect += correct;
+    student.xpFromMissions += Number(attempt.xpEarned || 0);
+    student.coinsFromMissions += Number(attempt.coinsEarned || 0);
+    student.durationSeconds += Number(attempt.durationSeconds || 0);
+
+    (attempt.answers || []).forEach((answer) => {
+      const area = answer.area || "Sem area";
+      const current = student.areas[area] || { solved: 0, correct: 0 };
+      current.solved += 1;
+      current.correct += answer.correct ? 1 : 0;
+      student.areas[area] = current;
+    });
+
+    const attemptDate = getAttemptDate(attempt);
+    if (attemptDate && attemptDate >= weekInfo.start && attemptDate <= weekInfo.end) {
+      student.weeklyMissions += 1;
+      student.weeklySolved += solved;
+      student.weeklyCorrect += correct;
+      student.weeklyXp += Number(attempt.xpEarned || 0);
+      student.weeklyCoins += Number(attempt.coinsEarned || 0);
+    }
+  });
+
+  return [...studentMap.values()].map((student) => {
+    const areaRows = Object.entries(student.areas)
+      .map(([area, stats]) => ({
+        area,
+        solved: stats.solved,
+        accuracy: stats.solved ? Math.round((stats.correct / stats.solved) * 100) : 0
+      }))
+      .sort((a, b) => b.solved - a.solved || b.accuracy - a.accuracy);
+    const weakArea = areaRows.slice().filter((item) => item.solved >= 2 && item.accuracy < attentionThreshold).sort((a, b) => a.accuracy - b.accuracy)[0];
+    const strongArea = areaRows.slice().filter((item) => item.solved >= 2 && item.accuracy >= Math.min(100, attentionThreshold + 20)).sort((a, b) => b.accuracy - a.accuracy)[0];
+
+    return {
+      ...student,
+      accuracy: student.solved ? Math.round((student.correct / student.solved) * 100) : 0,
+      missionAccuracy: student.missionSolved ? Math.round((student.missionCorrect / student.missionSolved) * 100) : 0,
+      weeklyAccuracy: student.weeklySolved ? Math.round((student.weeklyCorrect / student.weeklySolved) * 100) : 0,
+      avgMissionMinutes: student.missionAttempts ? Math.round((student.durationSeconds / student.missionAttempts) / 60) : 0,
+      areaRows,
+      strongArea,
+      weakArea
+    };
+  });
+}
+
+function classifyPerformance(accuracy, threshold) {
+  const safeAccuracy = Number(accuracy || 0);
+  const safeThreshold = Math.max(0, Math.min(100, Number(threshold || 0)));
+  if (safeAccuracy < safeThreshold) {
+    return { key: "attention", label: "Atencao", className: "attention" };
+  }
+  if (safeAccuracy >= Math.min(100, safeThreshold + 20)) {
+    return { key: "strong", label: "Forca", className: "positive" };
+  }
+  return { key: "ok", label: "Ok", className: "neutral" };
+}
+
+function normalizeRankingAvatar(avatar) {
+  return {
+    ...defaultAvatar,
+    ...(avatar || {}),
+    kind: "chibi",
+    base: avatar?.base || defaultAvatar.base,
+    hair: avatar?.hair || defaultAvatar.hair,
+    eyes: avatar?.eyes || defaultAvatar.eyes,
+    mouths: avatar?.mouths || avatar?.mouth || defaultAvatar.mouths,
+    shirts: avatar?.shirts || avatar?.outfit || defaultAvatar.shirts,
+    accessories: avatar?.accessories || defaultAvatar.accessories,
+    accessories2: avatar?.accessories2 || defaultAvatar.accessories2,
+    pants: avatar?.pants || defaultAvatar.pants,
+    shoes: avatar?.shoes || defaultAvatar.shoes,
+    pets: avatar?.pets || defaultAvatar.pets,
+    layerOrder: normalizeAvatarLayerOrder(avatar?.layerOrder)
+  };
+}
+
+function getRankingAudienceLabel(audience = {}) {
+  if (audience.grade && audience.className) return `${audience.grade} ${audience.className}`;
+  if (audience.grade) return audience.grade;
+  return "geral";
+}
+
+function getRankingSliceId({ weekKey, audience = {} }) {
+  return [
+    weekKey || "semana",
+    audience.grade || "geral",
+    audience.className || "todas"
+  ].join("__");
+}
+
+function buildStudentFeedback(student, classAverageAccuracy) {
+  if (!student) return "Selecione um aluno para ver um feedback pedagogico.";
+  if (!student.solved) return "Ainda nao ha respostas suficientes para avaliar desempenho.";
+  if (student.accuracy >= classAverageAccuracy + 10) return "Desempenho acima da media da turma. Bom candidato para desafios extras e ranking competitivo.";
+  if (student.accuracy <= classAverageAccuracy - 10) return "Desempenho abaixo da media da turma. Vale observar dificuldades por area e oferecer retomada guiada.";
+  return "Desempenho proximo da media da turma. Acompanhe regularidade semanal e evolucao nas proximas missoes.";
+}
+
 export default function AdminPage() {
   const [activeTab, setActiveTab] = useState("missions");
   const [users, setUsers] = useState([]);
+  const [classrooms, setClassrooms] = useState([]);
   const [questions, setQuestions] = useState([]);
   const [missions, setMissions] = useState([]);
   const [missionAttempts, setMissionAttempts] = useState([]);
@@ -279,6 +507,7 @@ export default function AdminPage() {
   const [accessoryShopPrices, setAccessoryShopPrices] = useState({});
   const [accessoryShopCategories, setAccessoryShopCategories] = useState({});
   const [accessoryTitles, setAccessoryTitles] = useState({});
+  const [accessoryDescriptions, setAccessoryDescriptions] = useState({});
   const [creationFilters, setCreationFilters] = useState({ status: "review", category: "" });
   const [editingAccessoryArt, setEditingAccessoryArt] = useState(null);
   const [editingAccessoryPixelData, setEditingAccessoryPixelData] = useState(null);
@@ -289,10 +518,16 @@ export default function AdminPage() {
   const [loadErrors, setLoadErrors] = useState([]);
   const [draggingQuestionId, setDraggingQuestionId] = useState("");
   const [dropActive, setDropActive] = useState(false);
+  const [draggingUserId, setDraggingUserId] = useState("");
+  const [classDropTargetKey, setClassDropTargetKey] = useState("");
   const [questionFilters, setQuestionFilters] = useState({ area: "", difficulty: "" });
   const [analyticsFilters, setAnalyticsFilters] = useState({ grade: "", className: "" });
+  const [analyticsStudentId, setAnalyticsStudentId] = useState("");
+  const [analyticsAttentionThreshold, setAnalyticsAttentionThreshold] = useState(60);
   const [classFilters, setClassFilters] = useState({ grade: "", className: "" });
+  const [classroomDraft, setClassroomDraft] = useState(initialClassroom);
   const [studentSearch, setStudentSearch] = useState("");
+  const [relocationSearch, setRelocationSearch] = useState("");
   const [editingUser, setEditingUser] = useState(null);
   const [rewardingUser, setRewardingUser] = useState(null);
   const [classMessage, setClassMessage] = useState("");
@@ -300,6 +535,10 @@ export default function AdminPage() {
   const [editingMission, setEditingMission] = useState(null);
   const [socialConfig, setSocialConfig] = useState({ visibilityScope: "class" });
   const [socialMessage, setSocialMessage] = useState("");
+  const [wallMessages, setWallMessages] = useState([]);
+  const [weeklyRankingConfig, setWeeklyRankingConfig] = useState(defaultWeeklyRankingConfig);
+  const [weeklyRankingMessage, setWeeklyRankingMessage] = useState("");
+  const [weeklyRankingLimit, setWeeklyRankingLimit] = useState(5);
   const [economyConfig, setEconomyConfig] = useState(defaultEconomyConfig);
   const [economyMessage, setEconomyMessage] = useState("");
   const adminGuideBase = useMemo(
@@ -326,6 +565,61 @@ export default function AdminPage() {
   );
 
   const classStats = useMemo(() => buildClassStats(users), [users]);
+  const managedClassrooms = useMemo(() => buildManagedClassrooms(classrooms, classStats), [classrooms, classStats]);
+  const classroomChoices = useMemo(() => buildClassroomOptions(classrooms, users), [classrooms, users]);
+  const gradeOptions = useMemo(
+    () => classroomChoices.gradeOptions,
+    [classroomChoices]
+  );
+  const classOptions = useMemo(
+    () => classroomChoices.classOptions,
+    [classroomChoices]
+  );
+  const missionClassroomOptions = useMemo(
+    () => {
+      const options = classroomChoices.classroomOptions.slice();
+      const missionKey = classroomKey({ grade: mission.targetGrade, className: mission.targetClass });
+      if (mission.targetGrade && mission.targetClass && !options.some((option) => option.value === missionKey)) {
+        options.unshift({
+          value: missionKey,
+          label: `${mission.targetGrade} - ${mission.targetClass}`,
+          classroom: { grade: mission.targetGrade, className: mission.targetClass }
+        });
+      }
+      if (!options.length) {
+        options.push({
+          value: classroomKey({ grade: mission.targetGrade, className: mission.targetClass }),
+          label: `${mission.targetGrade} - ${mission.targetClass}`,
+          classroom: { grade: mission.targetGrade, className: mission.targetClass }
+        });
+      }
+      return options;
+    },
+    [classroomChoices, mission.targetGrade, mission.targetClass]
+  );
+  const editingMissionClassroomOptions = useMemo(
+    () => {
+      const options = classroomChoices.classroomOptions.slice();
+      if (!editingMission?.targetGrade || !editingMission?.targetClass) return options;
+      const editingKey = classroomKey({ grade: editingMission.targetGrade, className: editingMission.targetClass });
+      if (!options.some((option) => option.value === editingKey)) {
+        options.unshift({
+          value: editingKey,
+          label: `${editingMission.targetGrade} - ${editingMission.targetClass}`,
+          classroom: { grade: editingMission.targetGrade, className: editingMission.targetClass }
+        });
+      }
+      return options;
+    },
+    [classroomChoices, editingMission]
+  );
+  const analyticsClassroomOptions = useMemo(
+    () => [
+      { value: "", label: "Todas as turmas" },
+      ...classroomChoices.classroomOptions
+    ],
+    [classroomChoices]
+  );
   const pendingStudents = useMemo(
     () => users.filter((user) => user.role !== "admin" && (user.status || "pending") === "pending"),
     [users]
@@ -373,9 +667,9 @@ export default function AdminPage() {
     () => {
       if (isPendingClassView) return pendingClassStats;
       if (isUnassignedClassView) return unassignedClassStats;
-      return classStats.find((item) => item.grade === classFilters.grade && item.className === classFilters.className) || null;
+      return managedClassrooms.find((item) => item.grade === classFilters.grade && item.className === classFilters.className) || null;
     },
-    [classStats, classFilters, isPendingClassView, isUnassignedClassView, pendingClassStats, unassignedClassStats]
+    [managedClassrooms, classFilters, isPendingClassView, isUnassignedClassView, pendingClassStats, unassignedClassStats]
   );
   const classStudents = useMemo(
     () =>
@@ -390,12 +684,26 @@ export default function AdminPage() {
         .filter((user) => {
           const search = studentSearch.trim().toLowerCase();
           if (!search) return true;
-          return [user.name, user.email, user.grade, user.className]
+          return [user.name, user.email, user.grade, user.className, user.requestedClassTag]
             .filter(Boolean)
             .some((value) => String(value).toLowerCase().includes(search));
         })
         .sort((a, b) => String(a.name || a.email).localeCompare(String(b.name || b.email))),
     [users, classFilters, studentSearch, isPendingClassView, isUnassignedClassView]
+  );
+  const relocationUsers = useMemo(
+    () => {
+      const search = relocationSearch.trim().toLowerCase();
+      return users
+        .filter((user) => {
+          if (!search) return true;
+          return [user.name, user.email, user.grade, user.className, user.requestedClassTag, user.status, user.role]
+            .filter(Boolean)
+            .some((value) => String(value).toLowerCase().includes(search));
+        })
+        .sort((a, b) => String(a.name || a.email).localeCompare(String(b.name || b.email)));
+    },
+    [users, relocationSearch]
   );
   const classMissions = useMemo(
     () => {
@@ -444,6 +752,31 @@ export default function AdminPage() {
     [missionAttempts, missions, users, analyticsFilters]
   );
   const maxEvolutionAttempts = Math.max(1, ...missionEvolution.map((item) => item.attempts));
+  const weekInfo = useMemo(() => getCurrentWeekInfo(), []);
+  const studentAnalytics = useMemo(
+    () => buildStudentAnalytics({ users, attempts: missionAttempts, filters: analyticsFilters, weekInfo, attentionThreshold: analyticsAttentionThreshold }),
+    [users, missionAttempts, analyticsFilters, weekInfo, analyticsAttentionThreshold]
+  );
+  const classAverageAccuracy = studentAnalytics.length
+    ? Math.round(studentAnalytics.reduce((total, student) => total + student.accuracy, 0) / studentAnalytics.length)
+    : 0;
+  const weeklyStudentRanking = useMemo(
+    () => studentAnalytics
+      .filter((student) => student.weeklyMissions > 0 || student.weeklyXp > 0)
+      .sort((a, b) => b.weeklyXp - a.weeklyXp || b.weeklyAccuracy - a.weeklyAccuracy || b.weeklySolved - a.weeklySolved)
+      .map((student, index) => ({ ...student, position: index + 1 })),
+    [studentAnalytics]
+  );
+  const classStudentRanking = useMemo(
+    () => studentAnalytics
+      .slice()
+      .sort((a, b) => b.accuracy - a.accuracy || b.solved - a.solved || b.totalXp - a.totalXp),
+    [studentAnalytics]
+  );
+  const selectedStudentAnalytics = useMemo(
+    () => studentAnalytics.find((student) => student.id === analyticsStudentId) || classStudentRanking[0] || null,
+    [studentAnalytics, analyticsStudentId, classStudentRanking]
+  );
   const filteredQuestions = useMemo(
     () =>
       questions
@@ -485,9 +818,12 @@ export default function AdminPage() {
       listAccessoryRequests(),
       getSocialConfig(),
       getEconomyConfig(),
-      loadAvatarCatalog({ force: true })
+      loadAvatarCatalog({ force: true }),
+      getWeeklyRankingConfig(),
+      listWallMessages({ includeHidden: true, pageSize: 100 }),
+      listClassrooms()
     ]);
-    const labels = ["usuarios", "questoes", "missoes", "tentativas", "criacoes", "social", "economia", "catalogo"];
+    const labels = ["usuarios", "questoes", "missoes", "tentativas", "criacoes", "social", "economia", "catalogo", "ranking semanal", "mural", "turmas"];
     const errors = [];
 
     results.forEach((result, index) => {
@@ -504,6 +840,9 @@ export default function AdminPage() {
       if (index === 5) setSocialConfig(result.value);
       if (index === 6) setEconomyConfig(result.value);
       if (index === 7) setAdminAvatarCatalog(result.value);
+      if (index === 8) setWeeklyRankingConfig(result.value);
+      if (index === 9) setWallMessages(result.value);
+      if (index === 10) setClassrooms(result.value);
     });
 
     setLoadErrors(errors);
@@ -530,6 +869,26 @@ export default function AdminPage() {
     await createMission(mission);
     setMission(initialMission);
     await refresh();
+  }
+
+  function applyMissionClassroom(optionKey) {
+    const selected = missionClassroomOptions.find((option) => option.value === optionKey)?.classroom;
+    if (!selected) return;
+    setMission((current) => ({
+      ...current,
+      targetGrade: selected.grade,
+      targetClass: selected.className
+    }));
+  }
+
+  function applyEditingMissionClassroom(optionKey) {
+    const selected = editingMissionClassroomOptions.find((option) => option.value === optionKey)?.classroom;
+    if (!selected) return;
+    setEditingMission((current) => ({
+      ...current,
+      targetGrade: selected.grade,
+      targetClass: selected.className
+    }));
   }
 
   function startEditMission(item) {
@@ -667,6 +1026,57 @@ export default function AdminPage() {
     await refresh();
   }
 
+  function applyClassroomToEditingUser(classroom) {
+    if (!editingUser) return;
+    setEditingUser({
+      ...editingUser,
+      grade: classroom.grade,
+      className: classroom.className
+    });
+  }
+
+  async function handleCreateClassroom(event) {
+    event.preventDefault();
+    setClassMessage("");
+    const exists = managedClassrooms.some((item) => item.grade === classroomDraft.grade && item.className === classroomDraft.className);
+    if (exists && !window.confirm("Esta serie/turma ja aparece na lista. Criar um cadastro mesmo assim para nomear e fixar no Firebase?")) return;
+
+    await createClassroom(classroomDraft);
+    setClassroomDraft(initialClassroom);
+    setClassMessage("Turma cadastrada no Firebase.");
+    await refresh();
+  }
+
+  async function handleDeleteClassroom(classroom) {
+    const assignedUsers = users.filter((user) => user.grade === classroom.grade && user.className === classroom.className);
+    const shouldDelete = window.confirm(
+      `Excluir a turma "${classroom.name || classroom.key}"? ${assignedUsers.length} perfil(is) ficarao sem turma ate o ADM realocar.`
+    );
+    if (!shouldDelete) return;
+
+    await Promise.all([
+      ...assignedUsers.map((user) => updateUserClass(user.id, { grade: "", className: "" })),
+      ...(classroom.id ? [deleteClassroom(classroom.id)] : [])
+    ]);
+    setClassFilters({ grade: UNASSIGNED_CLASS_KEY, className: "" });
+    setClassMessage(`${assignedUsers.length} perfil(is) ficaram sem turma para realocacao.`);
+    await refresh();
+  }
+
+  async function handleDropUserOnClass(event, classroom) {
+    event.preventDefault();
+    const userId = event.dataTransfer.getData("text/user-id") || draggingUserId;
+    setDraggingUserId("");
+    setClassDropTargetKey("");
+    if (!userId || !classroom?.grade || !classroom?.className) return;
+
+    const user = users.find((item) => item.id === userId);
+    await updateUserClass(userId, { grade: classroom.grade, className: classroom.className });
+    setClassFilters({ grade: classroom.grade, className: classroom.className });
+    setClassMessage(`${user?.name || user?.email || "Usuario"} realocado para ${classroom.name || classroom.key}.`);
+    await refresh();
+  }
+
   async function handleAwardUser(event) {
     event.preventDefault();
     if (!rewardingUser) return;
@@ -710,10 +1120,11 @@ export default function AdminPage() {
     await refresh();
   }
 
-  async function handleAccessoryTitleSave(item) {
+  async function handleAccessoryDetailsSave(item) {
     const title = String(accessoryTitles[item.id] ?? item.title ?? "").trim();
+    const description = String(accessoryDescriptions[item.id] ?? item.description ?? "").trim();
     if (!title) return;
-    await updateAccessoryRequestDetails(item.id, { title });
+    await updateAccessoryRequestDetails(item.id, { title, description });
     await refresh();
   }
 
@@ -778,11 +1189,114 @@ export default function AdminPage() {
     setSocialMessage("Configuracao social salva.");
   }
 
+  async function handleToggleWallMessage(message) {
+    await setWallMessageStatus(message.id, message.status === "hidden" ? "visible" : "hidden");
+    setWallMessages(await listWallMessages({ includeHidden: true, pageSize: 100 }));
+  }
+
+  async function handleDeleteWallMessage(message) {
+    const ok = window.confirm(`Excluir o recado de ${message.authorName || "colega"}?`);
+    if (!ok) return;
+    await deleteWallMessage(message.id);
+    setWallMessages(await listWallMessages({ includeHidden: true, pageSize: 100 }));
+  }
+
   async function handleSaveEconomyConfig(event) {
     event.preventDefault();
     setEconomyMessage("");
     await saveEconomyConfig(economyConfig);
     setEconomyMessage("Controle financeiro salvo.");
+  }
+
+  async function handlePublishWeeklyRanking() {
+    setWeeklyRankingMessage("");
+    const safeLimit = Math.max(1, Math.min(20, Number(weeklyRankingLimit || 5)));
+    const entries = weeklyStudentRanking.slice(0, safeLimit).map((student) => ({
+      userId: student.id,
+      position: student.position,
+      name: student.name,
+      grade: student.grade,
+      className: student.className,
+      avatar: student.avatar,
+      level: student.level,
+      totalXp: student.totalXp,
+      weeklyXp: student.weeklyXp,
+      weeklyAccuracy: student.weeklyAccuracy,
+      weeklySolved: student.weeklySolved,
+      weeklyMissions: student.weeklyMissions
+    }));
+    const audience = {
+      grade: analyticsFilters.grade,
+      className: analyticsFilters.className
+    };
+    const title = `Ranking semanal ${getRankingAudienceLabel(audience)}`;
+    const rankingSlice = {
+      id: getRankingSliceId({ weekKey: weekInfo.key, audience }),
+      published: true,
+      title,
+      weekKey: weekInfo.key,
+      weekLabel: weekInfo.label,
+      limit: safeLimit,
+      audience,
+      entries
+    };
+    const existingRankings = Array.isArray(weeklyRankingConfig.rankings)
+      ? weeklyRankingConfig.rankings
+      : (weeklyRankingConfig.entries?.length ? [weeklyRankingConfig] : []);
+    const nextRankings = [
+      rankingSlice,
+      ...existingRankings.filter((ranking) => {
+        const currentId = ranking.id || getRankingSliceId({ weekKey: ranking.weekKey, audience: ranking.audience });
+        return currentId !== rankingSlice.id;
+      })
+    ];
+
+    const nextConfig = {
+      ...rankingSlice,
+      published: true,
+      rankings: nextRankings
+    };
+
+    await saveWeeklyRankingConfig(nextConfig);
+    setWeeklyRankingConfig(nextConfig);
+    setWeeklyRankingMessage(`Ranking semanal ${getRankingAudienceLabel(audience)} publicado para os alunos.`);
+  }
+
+  async function handleHideWeeklyRanking() {
+    setWeeklyRankingMessage("");
+    const nextConfig = {
+      ...weeklyRankingConfig,
+      published: false
+    };
+    await saveWeeklyRankingConfig(nextConfig);
+    setWeeklyRankingConfig(nextConfig);
+    setWeeklyRankingMessage("Ranking semanal ocultado dos alunos.");
+  }
+
+  async function handleShowWeeklyRanking() {
+    setWeeklyRankingMessage("");
+    if (!weeklyRankingConfig.entries?.length && !weeklyRankingConfig.rankings?.length) {
+      setWeeklyRankingMessage("Nao ha ranking salvo para exibir. Publique um recorte primeiro.");
+      return;
+    }
+
+    const nextConfig = {
+      ...weeklyRankingConfig,
+      published: true
+    };
+    await saveWeeklyRankingConfig(nextConfig);
+    setWeeklyRankingConfig(nextConfig);
+    setWeeklyRankingMessage("Ranking semanal exibido para os alunos.");
+  }
+
+  async function handleDeleteWeeklyRanking() {
+    const shouldDelete = window.confirm("Excluir o ranking semanal publicado? Depois voce podera publicar outro recorte.");
+    if (!shouldDelete) return;
+
+    setWeeklyRankingMessage("");
+    await deleteWeeklyRankingConfig();
+    setWeeklyRankingConfig(defaultWeeklyRankingConfig);
+    setWeeklyRankingMessage("Ranking semanal excluido. Escolha uma serie ou turma e publique um novo recorte.");
   }
 
   return (
@@ -847,8 +1361,13 @@ export default function AdminPage() {
                     required
                   />
                 </label>
-                <ChoicePills label="Serie" value={mission.targetGrade} options={gradeOptions} onChange={(targetGrade) => setMission({ ...mission, targetGrade })} className="compact" />
-                <ChoicePills label="Turma" value={mission.targetClass} options={classOptions} onChange={(targetClass) => setMission({ ...mission, targetClass })} className="compact" />
+                <ChoicePills
+                  label="Turma da missao"
+                  value={classroomKey({ grade: mission.targetGrade, className: mission.targetClass })}
+                  options={missionClassroomOptions}
+                  onChange={applyMissionClassroom}
+                  className="compact blocky"
+                />
                 <label>
                   XP bonus
                   <input
@@ -993,8 +1512,13 @@ export default function AdminPage() {
                         <input value={editingMission.description} onChange={(event) => setEditingMission({ ...editingMission, description: event.target.value })} required />
                       </label>
                       <div className="form-grid">
-                        <ChoicePills label="Serie" value={editingMission.targetGrade} options={gradeOptions} onChange={(targetGrade) => setEditingMission({ ...editingMission, targetGrade })} className="compact" />
-                        <ChoicePills label="Turma" value={editingMission.targetClass} options={classOptions} onChange={(targetClass) => setEditingMission({ ...editingMission, targetClass })} className="compact" />
+                        <ChoicePills
+                          label="Turma da missao"
+                          value={classroomKey({ grade: editingMission.targetGrade, className: editingMission.targetClass })}
+                          options={editingMissionClassroomOptions}
+                          onChange={applyEditingMissionClassroom}
+                          className="compact blocky"
+                        />
                         <label>
                           XP bonus
                           <input type="number" min="0" value={editingMission.rewardXp} onChange={(event) => setEditingMission({ ...editingMission, rewardXp: event.target.value })} />
@@ -1247,9 +1771,96 @@ export default function AdminPage() {
             <div>
               <p className="eyebrow">Turmas</p>
               <h3>Organizacao por turma</h3>
+              <span>Cadastre turmas no Firebase ou use as turmas ja encontradas nos usuarios atuais.</span>
             </div>
             <Users size={26} />
           </div>
+
+          <form className="classroom-create-card" onSubmit={handleCreateClassroom}>
+            <div>
+              <p className="eyebrow">Cadastro dinamico</p>
+              <h4>Nova turma</h4>
+              <span>Depois de criada, ela fica disponivel para realocar alunos e montar missoes sem mexer no codigo.</span>
+            </div>
+            <label>
+              Nome exibido
+              <input
+                value={classroomDraft.name}
+                onChange={(event) => setClassroomDraft({ ...classroomDraft, name: event.target.value })}
+                placeholder="Ex.: ADM Testes, EJA Noite, Design"
+              />
+            </label>
+            <label>
+              Serie ou grupo
+              <input
+                value={classroomDraft.grade}
+                onChange={(event) => setClassroomDraft({ ...classroomDraft, grade: event.target.value })}
+                placeholder="Ex.: 1 ano, EJA, ADM"
+                required
+              />
+            </label>
+            <label>
+              Turma
+              <input
+                value={classroomDraft.className}
+                onChange={(event) => setClassroomDraft({ ...classroomDraft, className: event.target.value })}
+                placeholder="Ex.: A, Noite, Testes"
+                required
+              />
+            </label>
+            <button type="submit">Criar turma</button>
+          </form>
+
+          <section className="classroom-relocation-board">
+            <div className="section-heading">
+              <div>
+                <p className="eyebrow">Realocacao rapida</p>
+                <h3>Arraste para uma turma</h3>
+                <span>Use a busca, arraste o aluno ou ADM e solte em uma turma existente abaixo.</span>
+              </div>
+            </div>
+            <div className="student-search-row">
+              <label>
+                Buscar usuario
+                <input
+                  value={relocationSearch}
+                  onChange={(event) => setRelocationSearch(event.target.value)}
+                  placeholder="Nome, e-mail, serie, turma, status ou papel"
+                />
+              </label>
+              {relocationSearch && (
+                <button type="button" className="secondary" onClick={() => setRelocationSearch("")}>
+                  Limpar
+                </button>
+              )}
+            </div>
+            <div className="relocation-user-strip" aria-label="Usuarios para realocar">
+              {relocationUsers.map((user) => (
+                <article
+                  key={`${user.id}-relocation`}
+                  className={`relocation-user-card ${draggingUserId === user.id ? "is-dragging" : ""}`}
+                  draggable
+                  onDragStart={(event) => {
+                    event.dataTransfer.setData("text/user-id", user.id);
+                    event.dataTransfer.effectAllowed = "move";
+                    setDraggingUserId(user.id);
+                  }}
+                  onDragEnd={() => {
+                    setDraggingUserId("");
+                    setClassDropTargetKey("");
+                  }}
+                >
+                  <AvatarPreview avatar={user.avatar} size={42} />
+                  <div>
+                    <strong>{user.name || user.email}</strong>
+                    {user.requestedClassTag && <small>Tag: {user.requestedClassTag}</small>}
+                    <span>{user.grade || "sem serie"} / {user.className || "sem turma"} · {user.role || "student"}</span>
+                  </div>
+                </article>
+              ))}
+              {!relocationUsers.length && <p className="muted">Nenhum usuario encontrado para esse filtro.</p>}
+            </div>
+          </section>
 
           <div className="class-filter-cards class-management-cards">
             <button
@@ -1280,13 +1891,21 @@ export default function AdminPage() {
               <strong>Sem turma definida</strong>
               <span>{unassignedUsers.length} usuario(s), incluindo ADMs, precisam de serie/turma ou revisao</span>
             </button>
-            {classStats.map((group) => {
+            {managedClassrooms.map((group) => {
               const active = classFilters.grade === group.grade && classFilters.className === group.className;
               return (
                 <button
                   type="button"
-                  className={active ? "active" : ""}
+                  className={`${active ? "active" : ""} ${group.source === "firebase" ? "registered-class-card" : ""} ${classDropTargetKey === group.key ? "drop-ready" : ""}`.trim()}
                   key={`${group.key}-manage`}
+                  onDragOver={(event) => {
+                    if (!draggingUserId) return;
+                    event.preventDefault();
+                    event.dataTransfer.dropEffect = "move";
+                    setClassDropTargetKey(group.key);
+                  }}
+                  onDragLeave={() => setClassDropTargetKey("")}
+                  onDrop={(event) => handleDropUserOnClass(event, group)}
                   onClick={() => {
                     setClassFilters({ grade: group.grade, className: group.className });
                     setEditingUser(null);
@@ -1295,7 +1914,7 @@ export default function AdminPage() {
                     setClassMessage("");
                   }}
                 >
-                  <strong>{group.key}</strong>
+                  <strong>{group.name || group.key}</strong>
                   <span>{group.students} alunos · {group.approvedStudents} aprovados · {group.accuracy}% acerto</span>
                 </button>
               );
@@ -1311,7 +1930,7 @@ export default function AdminPage() {
               <div className="analytics-focus">
                 <div>
                   <p className="eyebrow">Turma selecionada</p>
-                  <h4>{selectedClassStats.key}</h4>
+                  <h4>{selectedClassStats.name || selectedClassStats.key}</h4>
                   {selectedClassStats.isPending ? (
                     <span>{selectedClassStats.students} alunos aguardando aprovacao. Edite serie/turma antes de liberar o acesso.</span>
                   ) : selectedClassStats.isUnassigned ? (
@@ -1322,9 +1941,16 @@ export default function AdminPage() {
                   </span>
                   )}
                 </div>
-                <button type="button" className="secondary" onClick={() => setClassFilters({ grade: "", className: "" })}>
-                  Fechar
-                </button>
+                <div className="row-actions">
+                  {!selectedClassStats.isPending && !selectedClassStats.isUnassigned && (
+                    <button type="button" className="danger-button" onClick={() => handleDeleteClassroom(selectedClassStats)}>
+                      Excluir turma
+                    </button>
+                  )}
+                  <button type="button" className="secondary" onClick={() => setClassFilters({ grade: "", className: "" })}>
+                    Fechar
+                  </button>
+                </div>
               </div>
 
               <div className="class-detail-grid">
@@ -1375,6 +2001,21 @@ export default function AdminPage() {
                               <ChoicePills label="Serie" value={editingUser.grade} options={gradeOptions} onChange={(grade) => setEditingUser({ ...editingUser, grade })} className="compact" />
                               <ChoicePills label="Turma" value={editingUser.className} options={classOptions} onChange={(className) => setEditingUser({ ...editingUser, className })} className="compact" />
                             </div>
+                            <div className="classroom-pick-list">
+                              <span>Realocar para</span>
+                              <div>
+                                {managedClassrooms.map((classroom) => (
+                                  <button
+                                    type="button"
+                                    key={`${editingUser.id}-${classroom.key}`}
+                                    className={editingUser.grade === classroom.grade && editingUser.className === classroom.className ? "active" : ""}
+                                    onClick={() => applyClassroomToEditingUser(classroom)}
+                                  >
+                                    {classroom.name || classroom.key}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
                             <ChoicePills label="Status" value={editingUser.status} options={userStatusOptions} onChange={(status) => setEditingUser({ ...editingUser, status })} className="compact blocky" />
                             <p className="muted">Alterar este e-mail atualiza o cadastro no Firestore. O e-mail de login do Firebase Auth precisa de Admin SDK/Cloud Function.</p>
                             <div className="row-actions">
@@ -1400,6 +2041,7 @@ export default function AdminPage() {
                               <div className="tcg-student-meta">
                                 <span>{user.email}</span>
                                 <small>{user.grade || "sem serie"} / {user.className || "sem turma"}</small>
+                                {user.requestedClassTag && <em>Tag informada: {user.requestedClassTag}</em>}
                               </div>
                             </div>
                             <div className="tcg-stat-grid">
@@ -1443,10 +2085,10 @@ export default function AdminPage() {
                               <button type="button" onClick={() => approveUser(user.id, {
                                 grade: gradeOptions.includes(user.grade)
                                   ? user.grade
-                                  : selectedClassStats.isPending || selectedClassStats.isUnassigned ? "1 ano" : selectedClassStats.grade,
+                                  : selectedClassStats.isPending || selectedClassStats.isUnassigned ? managedClassrooms[0]?.grade || "1 ano" : selectedClassStats.grade,
                                 className: classOptions.includes(user.className)
                                   ? user.className
-                                  : selectedClassStats.isPending || selectedClassStats.isUnassigned ? "A" : selectedClassStats.className
+                                  : selectedClassStats.isPending || selectedClassStats.isUnassigned ? managedClassrooms[0]?.className || "A" : selectedClassStats.className
                               }).then(refresh)}>
                                 {user.status === "approved" ? "Alocar padrao" : "Aprovar"}
                               </button>
@@ -1731,23 +2373,30 @@ export default function AdminPage() {
                     <strong>{item.title || "Sem titulo"}</strong>
                     <small>{item.userName || item.userEmail || "Aluno"} · {item.pricePaid || 0} moedas pagas</small>
                   </div>
-                  <label className="accessory-title-edit">
+                  <label className="accessory-title-edit accessory-details-edit">
                     Nome do item
-                    <div>
-                      <input
-                        value={accessoryTitles[item.id] ?? item.title ?? ""}
-                        onChange={(event) => setAccessoryTitles((current) => ({
-                          ...current,
-                          [item.id]: event.target.value
-                        }))}
-                        maxLength={48}
-                      />
-                      <button type="button" className="secondary" onClick={() => handleAccessoryTitleSave(item)}>
-                        Salvar
-                      </button>
-                    </div>
+                    <input
+                      value={accessoryTitles[item.id] ?? item.title ?? ""}
+                      onChange={(event) => setAccessoryTitles((current) => ({
+                        ...current,
+                        [item.id]: event.target.value
+                      }))}
+                      maxLength={48}
+                    />
+                    Descricao do item
+                    <textarea
+                      value={accessoryDescriptions[item.id] ?? item.description ?? ""}
+                      onChange={(event) => setAccessoryDescriptions((current) => ({
+                        ...current,
+                        [item.id]: event.target.value
+                      }))}
+                      maxLength={180}
+                      rows={3}
+                    />
+                    <button type="button" className="secondary" onClick={() => handleAccessoryDetailsSave(item)}>
+                      Salvar nome e descricao
+                    </button>
                   </label>
-                  {item.description && <p>{item.description}</p>}
                   <ChoicePills
                     label="Status"
                     value={item.status || "pending"}
@@ -1871,6 +2520,16 @@ export default function AdminPage() {
                 />
                 <small>Cobrado quando o aluno compra outro manequim permanente.</small>
               </label>
+              <label>
+                Publicar recado no Mural
+                <input
+                  type="number"
+                  min="0"
+                  value={economyConfig.wallMessagePrice}
+                  onChange={(event) => setEconomyConfig((current) => ({ ...current, wallMessagePrice: event.target.value }))}
+                />
+                <small>Cobrado por recado publicado por aluno. O ADM publica sem custo.</small>
+              </label>
             </div>
             <button type="submit">Salvar economia</button>
           </form>
@@ -1916,6 +2575,34 @@ export default function AdminPage() {
           </form>
 
           {socialMessage && <p className="muted">{socialMessage}</p>}
+
+          <div className="wall-admin-list">
+            <div className="section-heading">
+              <div>
+                <p className="eyebrow">Mural de recados</p>
+                <h3>{wallMessages.length} recado(s) recentes</h3>
+                <span>Oculte ou exclua mensagens inadequadas. Recados do ADM aparecem destacados para os alunos.</span>
+              </div>
+            </div>
+            {wallMessages.map((wallMessage) => (
+              <article className={`wall-admin-card ${wallMessage.status === "hidden" ? "hidden" : ""}`} key={wallMessage.id}>
+                <div>
+                  <strong>{wallMessage.authorName || "Colega"}</strong>
+                  <span>{wallMessage.authorRole === "admin" ? "ADM" : `${wallMessage.authorGrade || "Sem serie"} ${wallMessage.authorClassName || ""}`}</span>
+                  <p>{wallMessage.text}</p>
+                </div>
+                <div className="row-actions">
+                  <button type="button" className="secondary" onClick={() => handleToggleWallMessage(wallMessage)}>
+                    {wallMessage.status === "hidden" ? "Exibir" : "Ocultar"}
+                  </button>
+                  <button type="button" className="danger-button" onClick={() => handleDeleteWallMessage(wallMessage)}>
+                    Excluir
+                  </button>
+                </div>
+              </article>
+            ))}
+            {!wallMessages.length && <p className="muted">Nenhum recado publicado ainda.</p>}
+          </div>
         </section>
       )}
 
@@ -1923,19 +2610,46 @@ export default function AdminPage() {
         <section className="admin-section analytics-dashboard">
           <div className="section-heading">
             <div>
-              <p className="eyebrow">Analytics</p>
-              <h3>Desempenho pedagogico por turma</h3>
+              <p className="eyebrow">Graficos</p>
+              <h3>Central de desempenho pedagogico</h3>
+              <span>Compare turmas, acompanhe alunos e publique rankings semanais quando fizer sentido para o jogo.</span>
             </div>
             <BarChart3 size={26} />
           </div>
 
-          <div className="analytics-filters">
-            <ChoicePills label="Serie" value={analyticsFilters.grade} options={allGradeOptions} onChange={(grade) => setAnalyticsFilters((current) => ({ ...current, grade }))} className="compact" />
-            <ChoicePills label="Turma" value={analyticsFilters.className} options={allClassOptions} onChange={(className) => setAnalyticsFilters((current) => ({ ...current, className }))} className="compact" />
+          <div className="analytics-control-panel">
+            <div>
+              <strong>Recorte de analise</strong>
+              <span>{analyticsFilters.grade || "Todas as series"} / {analyticsFilters.className || "todas as turmas"}</span>
+            </div>
+            <ChoicePills
+              label="Turma"
+              value={analyticsFilters.grade && analyticsFilters.className ? classroomKey({ grade: analyticsFilters.grade, className: analyticsFilters.className }) : ""}
+              options={analyticsClassroomOptions}
+              onChange={(optionKey) => {
+                const selected = analyticsClassroomOptions.find((option) => option.value === optionKey)?.classroom;
+                setAnalyticsFilters(selected ? { grade: selected.grade, className: selected.className } : { grade: "", className: "" });
+              }}
+              className="compact"
+            />
+            <label className="analytics-threshold-control">
+              Atencao abaixo de
+              <input
+                type="number"
+                min="0"
+                max="100"
+                value={analyticsAttentionThreshold}
+                onChange={(event) => setAnalyticsAttentionThreshold(Math.max(0, Math.min(100, Number(event.target.value || 0))))}
+              />
+              <span>%</span>
+            </label>
             <button
               type="button"
               className="secondary"
-              onClick={() => setAnalyticsFilters({ grade: "", className: "" })}
+              onClick={() => {
+                setAnalyticsFilters({ grade: "", className: "" });
+                setAnalyticsStudentId("");
+              }}
             >
               Limpar filtros
             </button>
@@ -1949,7 +2663,10 @@ export default function AdminPage() {
                   type="button"
                   className={active ? "active" : ""}
                   key={`${group.key}-filter`}
-                  onClick={() => setAnalyticsFilters({ grade: group.grade, className: group.className })}
+                  onClick={() => {
+                    setAnalyticsFilters({ grade: group.grade, className: group.className });
+                    setAnalyticsStudentId("");
+                  }}
                 >
                   <strong>{group.key}</strong>
                   <span>{group.students} alunos · {group.accuracy}% acerto · {group.solved} respostas</span>
@@ -1997,6 +2714,25 @@ export default function AdminPage() {
               <Trophy size={28} />
             </div>
           )}
+
+          <div className="analytics-insight-grid">
+            <article>
+              <strong>Leitura rapida</strong>
+              <span>
+                {analyticsSummary.students
+                  ? `${analyticsSummary.accuracy}% de acerto medio com ${analyticsSummary.participation}% de participacao.`
+                  : "Ainda nao ha dados suficientes para este recorte."}
+              </span>
+            </article>
+            <article>
+              <strong>Uso pedagogico</strong>
+              <span>Missoes e areas abaixo de {analyticsAttentionThreshold}% entram em atencao. Use isso para achar lacunas coletivas e decidir reforco.</span>
+            </article>
+            <article>
+              <strong>Uso no jogo</strong>
+              <span>O ranking semanal usa XP da semana, taxa de acerto e volume de respostas. Publique quando quiser transformar desempenho em evento competitivo.</span>
+            </article>
+          </div>
 
           <div className="analytics-layout">
             <section className="analytics-panel">
@@ -2048,6 +2784,135 @@ export default function AdminPage() {
             </section>
           </div>
 
+          <section className="analytics-panel weekly-ranking-panel">
+            <div className="section-heading">
+              <div>
+                <p className="eyebrow">Ranking semanal</p>
+                <h3>Publicar para os alunos</h3>
+                <span>
+                  Semana {weekInfo.label} · {weeklyStudentRanking.length} aluno(s) com atividade · {analyticsFilters.grade ? (analyticsFilters.className ? "ranking da turma" : "ranking da serie") : "ranking geral"}
+                </span>
+              </div>
+              <Trophy size={24} />
+            </div>
+            <div className="weekly-ranking-status">
+              <div>
+                <strong>{weeklyRankingConfig.published ? "Publicado" : "Oculto"}</strong>
+                <span>
+                  {weeklyRankingConfig.published
+                    ? `${weeklyRankingConfig.rankings?.length || 1} recorte(s) disponivel(is) · ${weeklyRankingConfig.weekLabel || weekInfo.label}`
+                    : "Os alunos ainda nao veem ranking semanal no inicio."}
+                </span>
+              </div>
+              <div className="row-actions">
+                <label className="weekly-ranking-limit">
+                  Top
+                  <input
+                    type="number"
+                    min="1"
+                    max="20"
+                    value={weeklyRankingLimit}
+                    onChange={(event) => setWeeklyRankingLimit(Math.max(1, Math.min(20, Number(event.target.value || 5))))}
+                  />
+                </label>
+                <button type="button" onClick={handlePublishWeeklyRanking} disabled={!weeklyStudentRanking.length}>
+                  Publicar/substituir recorte
+                </button>
+                {weeklyRankingConfig.published ? (
+                  <button type="button" className="secondary" onClick={handleHideWeeklyRanking}>
+                    Ocultar dos alunos
+                  </button>
+                ) : (
+                  <button type="button" className="secondary" onClick={handleShowWeeklyRanking} disabled={!weeklyRankingConfig.entries?.length && !weeklyRankingConfig.rankings?.length}>
+                    Exibir aos alunos
+                  </button>
+                )}
+                <button type="button" className="secondary danger-button" onClick={handleDeleteWeeklyRanking}>
+                  Excluir ranking
+                </button>
+              </div>
+            </div>
+            {weeklyRankingMessage && <p className="muted">{weeklyRankingMessage}</p>}
+            <div className="analytics-ranking student-ranking-preview">
+              {weeklyStudentRanking.slice(0, weeklyRankingLimit).map((student) => (
+                <article key={`${student.id}-weekly-rank`}>
+                  <strong>{student.position}</strong>
+                  <AvatarPreview avatar={student.avatar} size={44} catalog={adminAvatarCatalog} />
+                  <div>
+                    <b>{student.name}</b>
+                    <span>Nivel {student.level} · {student.grade} / {student.className} · {student.weeklyMissions} missao(oes)</span>
+                  </div>
+                  <small>{student.weeklyXp} XP · {student.weeklyAccuracy}%</small>
+                </article>
+              ))}
+              {!weeklyStudentRanking.length && <p className="muted">Sem atividade concluida nesta semana para o recorte selecionado.</p>}
+            </div>
+          </section>
+
+          <section className="analytics-panel student-comparison-panel">
+            <div className="section-heading">
+              <div>
+                <p className="eyebrow">Alunos</p>
+                <h3>Comparar dentro da sala</h3>
+                <span>Ordenado por acerto, volume de respostas e XP total.</span>
+              </div>
+              <Users size={24} />
+            </div>
+            <div className="student-comparison-grid">
+              <div className="student-rank-list">
+                {classStudentRanking.map((student, index) => (
+                  <button
+                    type="button"
+                    className={selectedStudentAnalytics?.id === student.id ? "active" : ""}
+                    key={`${student.id}-student-analytics`}
+                    onClick={() => setAnalyticsStudentId(student.id)}
+                  >
+                    <b>{index + 1}</b>
+                    <div>
+                      <strong>{student.name}</strong>
+                      <span>{student.accuracy}% acerto · {student.solved} respostas · {student.totalXp} XP</span>
+                    </div>
+                  </button>
+                ))}
+                {!classStudentRanking.length && <p className="muted">Sem alunos aprovados para este recorte.</p>}
+              </div>
+
+              <div className="student-feedback-card">
+                <div className="research-card-heading">
+                  <strong>{selectedStudentAnalytics?.name || "Aluno"}</strong>
+                  <span>{selectedStudentAnalytics ? `${selectedStudentAnalytics.grade} / ${selectedStudentAnalytics.className}` : "sem selecao"}</span>
+                </div>
+                <div className="student-feedback-kpis">
+                  <div>
+                    <small>ACERTO</small>
+                    <b>{selectedStudentAnalytics?.accuracy || 0}%</b>
+                  </div>
+                  <div>
+                    <small>XP</small>
+                    <b>{selectedStudentAnalytics?.totalXp || 0}</b>
+                  </div>
+                  <div>
+                    <small>SEMANA</small>
+                    <b>{selectedStudentAnalytics?.weeklyXp || 0}</b>
+                  </div>
+                  <div>
+                    <small>SEQUENCIA</small>
+                    <b>{selectedStudentAnalytics?.bestStreak || 0}</b>
+                  </div>
+                </div>
+                <p className="analytics-research-note">
+                  {buildStudentFeedback(selectedStudentAnalytics, classAverageAccuracy)}
+                </p>
+                {selectedStudentAnalytics?.strongArea && (
+                  <span className="student-feedback-tag positive">Forca: {selectedStudentAnalytics.strongArea.area} ({selectedStudentAnalytics.strongArea.accuracy}%)</span>
+                )}
+                {selectedStudentAnalytics?.weakArea && (
+                  <span className="student-feedback-tag attention">Atencao: {selectedStudentAnalytics.weakArea.area} ({selectedStudentAnalytics.weakArea.accuracy}%)</span>
+                )}
+              </div>
+            </div>
+          </section>
+
           <section className="analytics-panel">
             <div className="section-heading">
               <div>
@@ -2063,6 +2928,7 @@ export default function AdminPage() {
               {missionEvolution.map((item, index) => {
                 const previous = missionEvolution[index - 1];
                 const delta = previous ? item.accuracy - previous.accuracy : 0;
+                const performance = classifyPerformance(item.accuracy, analyticsAttentionThreshold);
                 return (
                   <article className="mission-evolution-item" key={item.key}>
                     <div className="mission-evolution-bars">
@@ -2077,6 +2943,7 @@ export default function AdminPage() {
                       <strong>{item.title}</strong>
                       <span>{item.period}</span>
                       <b>{item.accuracy}% acerto</b>
+                      <i className={`performance-badge ${performance.className}`}>{performance.label}</i>
                       <small>
                         {item.attempts} tentativas · {item.participants} alunos · XP medio {item.avgXp}
                       </small>
@@ -2121,11 +2988,11 @@ export default function AdminPage() {
             <div className="section-heading">
               <div>
                 <p className="eyebrow">Coleta</p>
-                <h3>Indicadores prontos para pesquisa</h3>
+                <h3>Indicadores prontos para pesquisa pedagogica</h3>
               </div>
             </div>
             <p className="analytics-research-note">
-              Variaveis agregadas por turma para acompanhar desempenho, engajamento e progressao. Use estes indicadores como base para comparacoes entre turmas, ciclos de missao e recortes de intervencao.
+              Variaveis agregadas por turma e por aluno para acompanhar desempenho, engajamento e progressao. Use estes indicadores como base para comparacoes entre turmas, ciclos de missao e recortes de intervencao.
             </p>
             <div className="analytics-data-grid">
               {filteredClassStats.map((group) => (

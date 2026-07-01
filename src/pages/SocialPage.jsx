@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Bell, Eye, EyeOff, Plus, Search, Send, ShoppingBag, Sparkles, Trash2, UsersRound } from "lucide-react";
+import { Bell, Eye, EyeOff, MessageSquareText, Plus, Search, Send, ShoppingBag, Sparkles, Trash2, UsersRound } from "lucide-react";
+import AvatarLayerOrderEditor from "../components/AvatarLayerOrderEditor.jsx";
 import AvatarInventoryPicker from "../components/AvatarInventoryPicker.jsx";
 import AvatarPreview from "../components/AvatarPreview.jsx";
 import AdminClassViewControl from "../components/AdminClassViewControl.jsx";
@@ -33,6 +34,15 @@ import {
 } from "../services/showcaseService";
 import { defaultAvatar, getAvatarCategories, getAvatarOption, loadAvatarCatalog } from "../services/avatarCatalogService";
 import { getEffectiveClassProfile, readAdminClassView } from "../services/adminViewService";
+import { moveAvatarLayer, normalizeAvatarLayerOrder } from "../utils/avatarLayers";
+import {
+  formatRemainingCooldown,
+  getWallCooldownInfo,
+  listWallMessages,
+  sendWallMessage,
+  WALL_MESSAGE_MAX_LENGTH
+} from "../services/wallService";
+import { buildClassroomOptions, listClassrooms } from "../services/classroomService";
 
 function timestampToLabel(value) {
   if (!value) return "Agora";
@@ -45,7 +55,7 @@ function timestampToLabel(value) {
   return new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date(millis));
 }
 
-function InteractionScene({ currentProfile, target, interaction, selectedEmoji }) {
+function InteractionScene({ currentProfile, target, interaction, selectedEmoji, catalog }) {
   const leftAvatar = interaction?.fromAvatar || currentProfile?.avatar;
   const leftName = interaction?.fromName || currentProfile?.name || "Voce";
   const rightAvatar = interaction?.toAvatar || target?.avatar;
@@ -59,14 +69,14 @@ function InteractionScene({ currentProfile, target, interaction, selectedEmoji }
   return (
     <div className="social-scene-grid" aria-label="Cena de interacao">
       <div className="social-scene-character">
-        <AvatarPreview avatar={leftAvatar} size={118} />
+        <AvatarPreview avatar={leftAvatar} size={118} catalog={catalog} />
         <strong>{leftName}</strong>
       </div>
       <div className="social-scene-emoji">
         {emojiSrc ? <img src={emojiSrc} alt={emojiLabel} /> : <Sparkles size={34} />}
       </div>
       <div className="social-scene-character">
-        <AvatarPreview avatar={rightAvatar} size={118} />
+        <AvatarPreview avatar={rightAvatar} size={118} catalog={catalog} />
         <strong>{rightName}</strong>
       </div>
     </div>
@@ -94,7 +104,9 @@ function ShowcaseLookEditor({ profile, catalog, look, slotIndex, onCancel, onSav
   const [equippedItems, setEquippedItems] = useState(() => ({
     ...defaultAvatar,
     ...(look?.equippedItems || profile?.avatar || {}),
-    kind: "chibi"
+    kind: "chibi",
+    accessories2: (look?.equippedItems || profile?.avatar || {})?.accessories2 || defaultAvatar.accessories2,
+    layerOrder: normalizeAvatarLayerOrder((look?.equippedItems || profile?.avatar || {})?.layerOrder)
   }));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -148,7 +160,17 @@ function ShowcaseLookEditor({ profile, catalog, look, slotIndex, onCancel, onSav
           catalog={catalog}
           profile={profile}
           avatar={equippedItems}
-          onChange={(categoryKey, itemId) => setEquippedItems((current) => ({ ...current, [categoryKey]: itemId }))}
+          onChange={(categoryKey, itemId, avatarKey = categoryKey) => setEquippedItems((current) => ({ ...current, [avatarKey]: itemId }))}
+        />
+        <AvatarLayerOrderEditor
+          categories={avatarCategories}
+          catalog={catalog}
+          avatar={equippedItems}
+          order={equippedItems.layerOrder}
+          onMove={(categoryKey, direction) => setEquippedItems((current) => ({
+            ...current,
+            layerOrder: moveAvatarLayer(current.layerOrder, categoryKey, direction)
+          }))}
         />
         <div className="row-actions">
           <button type="submit" disabled={saving}>{saving ? "Salvando..." : "Salvar look"}</button>
@@ -210,9 +232,27 @@ function ShowcaseLookCard({ look, catalog, own = false, fotonized = false, onEdi
   );
 }
 
+function WallMessageCard({ message, catalog }) {
+  return (
+    <article className={`wall-message-card ${message.highlighted ? "highlighted" : ""}`}>
+      <AvatarPreview avatar={message.authorAvatar} size={58} catalog={catalog} />
+      <div>
+        <div className="wall-message-meta">
+          <strong>{message.authorName || "Colega"}</strong>
+          {message.highlighted && <span>ADM</span>}
+          <small>{timestampToLabel(message.createdAt)}</small>
+        </div>
+        <p>{message.text}</p>
+        <small>{message.authorGrade || "Sem serie"} {message.authorClassName ? `- ${message.authorClassName}` : ""}</small>
+      </div>
+    </article>
+  );
+}
+
 export default function SocialPage() {
   const { profile, refreshProfile } = useAuth();
   const [students, setStudents] = useState([]);
+  const [classrooms, setClassrooms] = useState([]);
   const [emojis, setEmojis] = useState([]);
   const [interactions, setInteractions] = useState([]);
   const [scope, setScope] = useState("class");
@@ -227,6 +267,9 @@ export default function SocialPage() {
   const [publishedLooks, setPublishedLooks] = useState([]);
   const [fotonizedLookIds, setFotonizedLookIds] = useState(new Set());
   const [showcaseNotifications, setShowcaseNotifications] = useState([]);
+  const [wallMessages, setWallMessages] = useState([]);
+  const [wallText, setWallText] = useState("");
+  const [sendingWallMessage, setSendingWallMessage] = useState(false);
   const [showShowcaseNotifications, setShowShowcaseNotifications] = useState(false);
   const [editingLook, setEditingLook] = useState(null);
   const [selectedLook, setSelectedLook] = useState(null);
@@ -255,9 +298,11 @@ export default function SocialPage() {
       loadAvatarCatalog(),
       listMyShowcaseLooks(profile.id),
       listPublishedShowcaseLooks(),
-      listShowcaseNotifications(profile.id)
+      listShowcaseNotifications(profile.id),
+      listWallMessages(),
+      listClassrooms()
     ])
-      .then(async ([config, loadedStudents, loadedEmojis, loadedInteractions, loadedEconomyConfig, loadedCatalog, loadedMyLooks, loadedPublishedLooks, loadedNotifications]) => {
+      .then(async ([config, loadedStudents, loadedEmojis, loadedInteractions, loadedEconomyConfig, loadedCatalog, loadedMyLooks, loadedPublishedLooks, loadedNotifications, loadedWallMessages, loadedClassrooms]) => {
         if (!active) return;
         const fotonizedIds = await listMyFotonizationIds(profile.id, loadedPublishedLooks);
         if (!active) return;
@@ -271,6 +316,8 @@ export default function SocialPage() {
         setPublishedLooks(loadedPublishedLooks);
         setFotonizedLookIds(fotonizedIds);
         setShowcaseNotifications(loadedNotifications);
+        setWallMessages(loadedWallMessages);
+        setClassrooms(loadedClassrooms);
       })
       .catch((error) => {
         if (active) setMessage(error?.message || "Nao foi possivel carregar os colegas.");
@@ -299,8 +346,9 @@ export default function SocialPage() {
       });
   }, [students, classProfile, scope, filters]);
 
-  const filterGrades = useMemo(() => [...new Set(visibleStudents.map((student) => student.grade).filter(Boolean))], [visibleStudents]);
-  const filterClasses = useMemo(() => [...new Set(visibleStudents.map((student) => student.className).filter(Boolean))], [visibleStudents]);
+  const classroomFilters = useMemo(() => buildClassroomOptions(classrooms, visibleStudents), [classrooms, visibleStudents]);
+  const filterGrades = classroomFilters.gradeOptions;
+  const filterClasses = classroomFilters.classOptions;
   const unreadInteractions = interactions.filter((item) => item.status === "unread");
   const sendCost = Number(economyConfig.emojiSendPrice || 0);
   const showcaseSlotPrice = Number(economyConfig.showcaseSlotPrice || 0);
@@ -318,6 +366,9 @@ export default function SocialPage() {
     .filter((look) => look.ownerId !== profile.id)
     .filter(isLookInSocialScope);
   const unreadShowcaseNotifications = showcaseNotifications.filter((notification) => notification.status === "unread");
+  const wallCost = Number(economyConfig.wallMessagePrice || 0);
+  const wallCooldown = getWallCooldownInfo(profile);
+  const canSendWallMessage = profile?.role === "admin" || (!wallCooldown.blocked && Number(profile?.coins || 0) >= wallCost);
 
   async function refreshShowcase() {
     const [loadedMyLooks, loadedPublishedLooks, loadedNotifications] = await Promise.all([
@@ -329,6 +380,35 @@ export default function SocialPage() {
     setPublishedLooks(loadedPublishedLooks);
     setShowcaseNotifications(loadedNotifications);
     setFotonizedLookIds(await listMyFotonizationIds(profile.id, loadedPublishedLooks));
+  }
+
+  async function refreshWallMessages() {
+    setWallMessages(await listWallMessages());
+  }
+
+  async function handleSendWallMessage(event) {
+    event.preventDefault();
+    setSendingWallMessage(true);
+    setMessage("");
+    try {
+      const result = await sendWallMessage({ profile, text: wallText });
+      if (result.cooldown) {
+        setMessage(`Aguarde ${formatRemainingCooldown(result.remainingMs)} para enviar outro recado.`);
+        return;
+      }
+      if (result.insufficientCoins) {
+        setMessage(`Moedas insuficientes. Enviar recado custa ${result.messageCost || wallCost} moedas.`);
+        return;
+      }
+      setWallText("");
+      await refreshProfile?.();
+      await refreshWallMessages();
+      setMessage(result.messageCost ? `Recado publicado por ${result.messageCost} moedas.` : "Recado publicado com destaque.");
+    } catch (error) {
+      setMessage(error?.message || "Nao foi possivel publicar o recado.");
+    } finally {
+      setSendingWallMessage(false);
+    }
   }
 
   async function handleToggleShowcaseNotifications() {
@@ -496,7 +576,7 @@ export default function SocialPage() {
       <div className="teacher-hero social-hero">
         <div>
           <p className="eyebrow">Colegas</p>
-          <h2>{activeSocialTab === "showcase" ? "Monte looks e visite vitrines." : "Veja os personagens e envie interacoes."}</h2>
+          <h2>{activeSocialTab === "wall" ? "Recados para toda a escola." : activeSocialTab === "showcase" ? "Monte looks e visite vitrines." : "Veja os personagens e envie interacoes."}</h2>
           <span>{scope === "all" ? "Todos podem se ver." : scope === "grade" ? "Visivel entre estudantes da mesma serie." : "Visivel entre estudantes da mesma turma."}</span>
         </div>
         <UsersRound size={40} />
@@ -508,6 +588,9 @@ export default function SocialPage() {
         </button>
         <button type="button" className={activeSocialTab === "showcase" ? "active" : ""} onClick={() => setActiveSocialTab("showcase")}>
           Vitrine
+        </button>
+        <button type="button" className={activeSocialTab === "wall" ? "active" : ""} onClick={() => setActiveSocialTab("wall")}>
+          Mural
         </button>
       </div>
 
@@ -593,7 +676,7 @@ export default function SocialPage() {
                       setSelectedInteraction(null);
                     }}
                   >
-                    <AvatarPreview avatar={student.avatar} size={76} />
+                    <AvatarPreview avatar={student.avatar} size={76} catalog={catalog} />
                     <strong>{student.name || "Colega"}</strong>
                     <span>{student.grade} - {student.className}</span>
                   </button>
@@ -615,6 +698,7 @@ export default function SocialPage() {
                 target={selectedStudent}
                 selectedEmoji={selectedEmoji}
                 interaction={selectedInteraction}
+                catalog={catalog}
               />
 
               <div className="social-emoji-strip">
@@ -821,6 +905,58 @@ export default function SocialPage() {
               </div>
             </div>
           )}
+        </section>
+      )}
+
+      {!loading && activeSocialTab === "wall" && (
+        <section className="wall-panel">
+          <div className="section-heading">
+            <div>
+              <p className="eyebrow">Mural de recados</p>
+              <h3>{wallMessages.length} recado(s) publicados</h3>
+              <span>Recados publicos, curtos e moderados. Mensagens do ADM aparecem em destaque.</span>
+            </div>
+            <MessageSquareText size={26} />
+          </div>
+
+          <form className="wall-compose-card" onSubmit={handleSendWallMessage}>
+            <AvatarPreview avatar={profile.avatar} size={64} catalog={catalog} />
+            <label>
+              Escrever recado
+              <textarea
+                value={wallText}
+                onChange={(event) => setWallText(event.target.value.slice(0, WALL_MESSAGE_MAX_LENGTH))}
+                placeholder={profile.role === "admin" ? "Aviso do professor para o mural..." : "Um recado curto para os colegas..."}
+                maxLength={WALL_MESSAGE_MAX_LENGTH}
+              />
+            </label>
+            <div className="wall-compose-footer">
+              <span>
+                {profile.role === "admin"
+                  ? "Mensagens do ADM ficam destacadas e nao pagam custo."
+                  : wallCooldown.blocked
+                    ? `Novo recado em ${formatRemainingCooldown(wallCooldown.remainingMs)}.`
+                    : `Custa ${wallCost} moedas. Cooldown: 8h.`}
+              </span>
+              <small>{wallText.length}/{WALL_MESSAGE_MAX_LENGTH}</small>
+              <button type="submit" disabled={sendingWallMessage || !wallText.trim() || !canSendWallMessage}>
+                {sendingWallMessage ? "Publicando..." : "Publicar"}
+              </button>
+            </div>
+          </form>
+
+          <div className="wall-message-list">
+            {wallMessages.map((wallMessage) => (
+              <WallMessageCard key={wallMessage.id} message={wallMessage} catalog={catalog} />
+            ))}
+            {!wallMessages.length && (
+              <article className="showcase-empty-slot">
+                <MessageSquareText size={28} />
+                <h3>Nenhum recado ainda</h3>
+                <p>O primeiro recado publicado aparece aqui.</p>
+              </article>
+            )}
+          </div>
         </section>
       )}
 
